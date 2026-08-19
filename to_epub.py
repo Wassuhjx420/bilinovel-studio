@@ -397,11 +397,59 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
         sorted_img_names = sorted(available_images.keys())
         cover_image_path = available_images[sorted_img_names[0]]
 
+    cover_item = None
     if cover_image_path and os.path.isfile(cover_image_path):
         with open(cover_image_path, "rb") as cf:
             cdata = cf.read()
-        book.set_cover("cover.jpg", cdata)
+        book.set_cover("images/cover.jpg", cdata, create_page=False)
         print(f"已设置封面: {os.path.basename(cover_image_path)}")
+
+        cover_html = f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>封面</title>
+  <style type="text/css">
+    * {{
+      margin: 0;
+      padding: 0;
+    }}
+    body {{
+      margin: 0;
+      padding: 0;
+      text-align: center;
+      background-color: #ffffff;
+    }}
+    div.cover-container {{
+      width: 100%;
+      height: 100vh;
+      text-align: center;
+      padding: 0;
+      margin: 0;
+    }}
+    img.cover-img {{
+      max-width: 100%;
+      max-height: 100%;
+      height: auto;
+      width: auto;
+      display: block;
+      margin: 0 auto;
+    }}
+  </style>
+</head>
+<body>
+  <div class="cover-container">
+    <img class="cover-img" src="images/cover.jpg" alt="封面"/>
+  </div>
+</body>
+</html>"""
+        cover_item = epub.EpubHtml(
+            title="封面",
+            file_name="cover.xhtml",
+            lang="zh",
+        )
+        cover_item.content = cover_html.encode("utf-8")
+        book.add_item(cover_item)
 
     # 将所有插图添加到 EPUB 清单
     media_map = {
@@ -452,7 +500,9 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
                             pass
 
     epub_chapters = []
-    spine = ["nav"]
+    spine = []
+    if cover_item:
+        spine.append(cover_item)
     toc = []
 
     for i, (title, paragraphs) in enumerate(chapters):
