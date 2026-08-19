@@ -1,0 +1,23 @@
+# Output novels directory
+novels/
+
+# Browser profiles and caches
+.edge_profile/
+.chrome_profile/
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Logs & temp files
+*.log
+test_*.py
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
