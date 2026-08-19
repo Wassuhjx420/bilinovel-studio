@@ -23,7 +23,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 BASE_DOMAIN = "https://www.linovelib.com"
-REQUEST_DELAY = 0.8
+REQUEST_DELAY = 0.1
 
 
 def normalize_input_url(raw_url):
@@ -63,28 +63,32 @@ def wait_for_turnstile(page, max_wait=30):
     """等待 Cloudflare Turnstile 验证通过，如遇复选框则尝试自动物理点击"""
     clicked = False
     for i in range(max_wait):
-        title = page.title()
-        if "请稍候" not in title and "Just a moment" not in title and "Attention" not in title and "Checking" not in title:
-            return True
+        try:
+            has_content = page.evaluate("() => !!document.querySelector('#TextContent, #acontent, .volume, #volumes, .chapter-list')")
+            if has_content:
+                return True
+        except Exception:
+            pass
 
         if not clicked:
             for f in page.frames:
-                if "turnstile" in f.url or "cloudflare" in f.url:
+                if "turnstile" in f.url or "challenges.cloudflare.com" in f.url:
                     try:
                         b = f.frame_element().bounding_box()
                         if b and b['width'] > 0:
-                            cx = b['x'] + 30
+                            cx = b['x'] + 35
                             cy = b['y'] + b['height'] / 2
                             print(f"  👆 检测到 Turnstile 验证，尝试自动点击 ({cx}, {cy})...")
-                            page.mouse.move(cx, cy)
+                            page.mouse.move(cx, cy, steps=8)
                             page.wait_for_timeout(200)
                             page.mouse.click(cx, cy)
                             clicked = True
                             break
                     except Exception:
                         pass
-        page.wait_for_timeout(1000)
-    return "请稍候" not in page.title()
+        page.wait_for_timeout(500)
+
+    return True
 
 
 def is_same_chapter_url(base_url, next_url):
@@ -101,7 +105,12 @@ def parse_catalog_volumes(page, catalog_url):
     print(f"正在访问目录页: {catalog_url} ...")
     page.goto(catalog_url, wait_until="domcontentloaded", timeout=45000)
     wait_for_turnstile(page)
-    page.wait_for_timeout(1500)
+
+    try:
+        page.wait_for_selector(".volume, #volumes, .chapter-list, .dir-list, .volume-list", timeout=8000)
+    except Exception:
+        pass
+    page.wait_for_timeout(300)
 
     soup = BeautifulSoup(page.content(), "html.parser")
 
@@ -225,11 +234,15 @@ def extract_subpage_items(page, subpage_url):
     """提取单张子页中的所有可见段落、插图及场景分隔符（按真实物理渲染 Y 坐标排序）"""
     page.goto(subpage_url, wait_until="domcontentloaded", timeout=35000)
     wait_for_turnstile(page)
-    page.wait_for_timeout(800)
+
+    try:
+        page.wait_for_selector("#acontent, #TextContent, .read-content", timeout=2000)
+    except Exception:
+        pass
 
     # 滚动到底部触发正文与插图完整渲染
     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(100)
 
     items = page.evaluate('''() => {
         const container = document.querySelector('#acontent') || document.querySelector('#TextContent') || document.querySelector('.read-content');
@@ -406,7 +419,6 @@ def scrape_chapter_with_pagination(page, first_url):
         if next_url and is_same_chapter_url(first_url, next_url) and next_url != curr_url:
             curr_url = next_url
             subpage_idx += 1
-            time.sleep(0.5)
         else:
             curr_url = None
 
@@ -430,12 +442,14 @@ def scrape_volume(novel_input, target_vol_param=None, custom_novel_name=None):
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox"
-            ]
+            ],
+            ignore_default_args=["--enable-automation"]
         )
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
-        # 客户端阻断重定向到失效域名
+        # 客户端阻断重定向到失效域名与防反爬识别
         page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
             Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
             window.location.replace = function(url) { console.log('Blocked replace to:', url); };
         """)
