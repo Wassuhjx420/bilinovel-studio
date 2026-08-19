@@ -1,12 +1,13 @@
 """
 将爬取的小说文本 + 插图整合为标准 EPUB 电子书
-支持独立运行或被爬虫脚本调用
+支持标准日轻排版规范：封面 -> 本卷信息和简介 -> 彩页 -> 正文（内嵌黑白插图）
 """
 
 import os
 import re
 import sys
 import html
+import hashlib
 from ebooklib import epub
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -15,7 +16,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 CSS_CONTENT = """
 @charset "utf-8";
 body {
-  font-family: "Noto Serif CJK SC", "Songti SC", "PingFang SC", "Microsoft YaHei", serif;
+  font-family: "Noto Serif CJK SC", "Songti SC", "Source Han Serif", "PingFang SC", "Microsoft YaHei", serif;
   line-height: 1.8;
   margin: 1em;
   text-align: justify;
@@ -33,12 +34,63 @@ p {
   text-indent: 2em;
   margin: 0.5em 0;
 }
+.book-info {
+  margin: 1.5em 0;
+  text-align: center;
+}
+.book-info p {
+  text-indent: 0 !important;
+  text-align: center !important;
+  color: #555;
+  font-size: 0.95em;
+  margin: 0.35em 0;
+}
+.divider {
+  text-indent: 0 !important;
+  text-align: center !important;
+  color: #aaa;
+  margin: 1.5em 0;
+  letter-spacing: 0.2em;
+}
+.synopsis {
+  margin: 1.8em 0;
+  padding: 1.2em 1.5em;
+  background: rgba(0, 0, 0, 0.025);
+  border-left: 4px solid #888;
+  border-radius: 4px;
+}
+.synopsis-title {
+  text-align: center;
+  font-size: 1.15em;
+  font-weight: bold;
+  margin: 0.2em 0 0.8em;
+  text-indent: 0 !important;
+  color: #333;
+}
+.synopsis p {
+  text-indent: 2em;
+  line-height: 1.8;
+  color: #444;
+}
 .illustration {
   text-align: center;
-  margin: 1.2em 0;
+  text-indent: 0 !important;
+  margin: 1.8em 0;
   page-break-inside: avoid;
 }
 .illustration img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  border-radius: 4px;
+}
+.gallery-item {
+  text-align: center;
+  text-indent: 0 !important;
+  margin: 1.8em 0;
+  page-break-inside: avoid;
+}
+.gallery-item img {
   max-width: 100%;
   height: auto;
   display: inline-block;
@@ -56,13 +108,6 @@ p {
 .scene-break span {
   display: inline-block;
   opacity: 0.85;
-}
-.gallery-caption {
-  text-indent: 0;
-  text-align: center;
-  font-size: 0.9em;
-  color: #666;
-  margin-top: 0.3em;
 }
 """
 
@@ -104,8 +149,116 @@ def parse_chapters(text):
     return chapters
 
 
-def build_chapter_html(title, paragraphs, available_images, is_gallery=False):
-    """构建单章 XHTML"""
+def build_color_page_html(title, paragraphs, available_images, story_images=None, story_hashes=None):
+    """
+    构建日轻标准【彩页与卷首信息】页面（封面-本卷信息和简介-彩页-正文）
+    包含：制作/录入信息、简介框、仅卷首全彩插图（彻底排除正文黑白插图）
+    """
+    info_lines = []
+    synopsis_lines = []
+    gallery_images = []
+
+    in_synopsis = False
+    in_hidden_section = False
+
+    for para in paragraphs:
+        if not para:
+            continue
+
+        # 忽略剧透提示及折叠黑白图声明
+        if "※黑白插图已内嵌正文※" in para or "点击可查看完整插图" in para or "读者请无视" in para:
+            in_hidden_section = True
+            continue
+
+        if in_hidden_section:
+            continue
+
+        m_img = re.match(r"^\[插图:\s*(.+?)\]$", para)
+        if m_img:
+            img_ref = m_img.group(1).strip()
+            fname = os.path.basename(img_ref)
+            # 如果该图片在正文中已经被引用为黑白插图，则彩页部分不重复收录
+            if story_images and fname in story_images:
+                continue
+
+            resolved_fname = None
+            resolved_path = None
+            if fname in available_images:
+                resolved_fname = fname
+                resolved_path = available_images[fname]
+            else:
+                for af, ap in available_images.items():
+                    if fname in af or os.path.splitext(fname)[0] in af:
+                        resolved_fname = af
+                        resolved_path = ap
+                        break
+
+            if resolved_path and os.path.isfile(resolved_path):
+                if story_hashes:
+                    try:
+                        with open(resolved_path, "rb") as f:
+                            img_h = hashlib.md5(f.read()).hexdigest()
+                        if img_h in story_hashes:
+                            # 属于正文黑白插图副本，彩页中剔除
+                            continue
+                    except Exception:
+                        pass
+                if resolved_fname not in gallery_images:
+                    gallery_images.append(resolved_fname)
+            continue
+
+        # 简介开始标记
+        if para.startswith("内容简介") or para.startswith("简介"):
+            in_synopsis = True
+            continue
+
+        if para.startswith("———") or para.startswith("───") or para.startswith("==="):
+            in_synopsis = False
+            continue
+
+        if in_synopsis:
+            synopsis_lines.append(para)
+        else:
+            info_lines.append(para)
+
+    body_parts = []
+    body_parts.append(f'<h2>{html.escape(title)}</h2>')
+
+    if info_lines:
+        body_parts.append('<div class="book-info">')
+        for l in info_lines:
+            body_parts.append(f'  <p>{html.escape(l)}</p>')
+        body_parts.append('</div>')
+        body_parts.append('<p class="divider">————————————————</p>')
+
+    if synopsis_lines:
+        body_parts.append('<div class="synopsis">')
+        body_parts.append('  <h3 class="synopsis-title">内容简介</h3>')
+        for l in synopsis_lines:
+            body_parts.append(f'  <p>{html.escape(l)}</p>')
+        body_parts.append('</div>')
+
+    if gallery_images:
+        for img_name in gallery_images:
+            body_parts.append(f'<div class="gallery-item"><img src="images/{img_name}" alt="彩页"/></div>')
+
+    body_html = "\n  ".join(body_parts)
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<head>
+  <meta charset="utf-8"/>
+  <title>{html.escape(title)}</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body class="color-page">
+  {body_html}
+</body>
+</html>"""
+
+
+def build_chapter_html(title, paragraphs, available_images):
+    """构建正文单章 XHTML（正文段落 + 场景分隔符 + 内嵌黑白插图）"""
     body_parts = []
 
     for para in paragraphs:
@@ -130,12 +283,10 @@ def build_chapter_html(title, paragraphs, available_images, is_gallery=False):
         m = re.match(r"^\[插图:\s*(.+?)\]$", para)
         if m:
             img_ref = m.group(1).strip()
-            # 提取文件名
             fname = os.path.basename(img_ref)
             if fname in available_images:
                 body_parts.append(f'<div class="illustration"><img src="images/{fname}" alt="插图"/></div>')
             else:
-                # 尝试通过名字模糊匹配可用图片
                 matched = None
                 for af in available_images:
                     if fname in af or os.path.splitext(fname)[0] in af:
@@ -167,7 +318,7 @@ def build_chapter_html(title, paragraphs, available_images, is_gallery=False):
 
 
 def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="佚名", output_file=None):
-    """从卷目录生成 EPUB 电子书"""
+    """从卷目录生成符合日轻标准排版的 EPUB 电子书（封面 -> 本卷信息和简介 -> 彩页 -> 正文）"""
     if not os.path.isdir(volume_dir):
         raise ValueError(f"目录不存在: {volume_dir}")
 
@@ -236,24 +387,19 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
 
     # 确定封面
     cover_image_path = None
-    # 优先检查是否存在 封面.jpg
     for cf in ["封面.jpg", "封面.png", "cover.jpg", "cover.png"]:
         p = os.path.join(volume_dir, cf)
         if os.path.isfile(p):
             cover_image_path = p
             break
 
-    # 否则取插图目录中的第一张图（通常是卷首彩插/封面）
     if not cover_image_path and available_images:
-        # 按文件名排序
         sorted_img_names = sorted(available_images.keys())
         cover_image_path = available_images[sorted_img_names[0]]
 
     if cover_image_path and os.path.isfile(cover_image_path):
         with open(cover_image_path, "rb") as cf:
             cdata = cf.read()
-        ext = os.path.splitext(cover_image_path)[1].lower()
-        media_type = "image/png" if ext == ".png" else "image/jpeg"
         book.set_cover("cover.jpg", cdata)
         print(f"已设置封面: {os.path.basename(cover_image_path)}")
 
@@ -278,21 +424,55 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
         )
         book.add_item(img_item)
 
-    # 生成各章节 XHTML
+    # 扫描正文章节中引用过的黑白插图与 MD5 二进制指纹，用于彩页排重
+    story_images = set()
+    story_hashes = set()
+    first_ch_is_gallery = False
+    if chapters:
+        first_title = chapters[0][0]
+        first_ch_is_gallery = any(kw in first_title for kw in ["插图", "彩页", "插画", "画廊", "Gallery"]) or any("内容简介" in p for p in chapters[0][1])
+        start_idx = 1 if first_ch_is_gallery else 0
+        for _, paras in chapters[start_idx:]:
+            for p in paras:
+                m = re.match(r"^\[插图:\s*(.+?)\]$", p)
+                if m:
+                    fname = os.path.basename(m.group(1).strip())
+                    story_images.add(fname)
+                    fpath = available_images.get(fname)
+                    if not fpath:
+                        for af, ap in available_images.items():
+                            if fname in af or os.path.splitext(fname)[0] in af:
+                                fpath = ap
+                                break
+                    if fpath and os.path.isfile(fpath):
+                        try:
+                            with open(fpath, "rb") as f:
+                                story_hashes.add(hashlib.md5(f.read()).hexdigest())
+                        except Exception:
+                            pass
+
     epub_chapters = []
     spine = ["nav"]
     toc = []
 
     for i, (title, paragraphs) in enumerate(chapters):
-        # 判断是否为纯图画廊章节
-        is_gallery = any(kw in title for kw in ["插图", "彩页", "插画", "画廊", "Gallery"])
-        ch_html = build_chapter_html(title, paragraphs, available_images, is_gallery=is_gallery)
+        if i == 0 and first_ch_is_gallery:
+            # 封面后的第一页：本卷信息、简介与卷首全彩插图
+            ch_html = build_color_page_html("彩页", paragraphs, available_images, story_images=story_images, story_hashes=story_hashes)
+            ch_item = epub.EpubHtml(
+                title="彩页",
+                file_name="color.xhtml",
+                lang="zh",
+            )
+        else:
+            # 正文章节
+            ch_html = build_chapter_html(title, paragraphs, available_images)
+            ch_item = epub.EpubHtml(
+                title=title,
+                file_name=f"chapter_{i:04d}.xhtml",
+                lang="zh",
+            )
 
-        ch_item = epub.EpubHtml(
-            title=title,
-            file_name=f"chapter_{i:04d}.xhtml",
-            lang="zh",
-        )
         ch_item.content = ch_html.encode("utf-8")
         ch_item.add_item(css_item)
         book.add_item(ch_item)
@@ -323,12 +503,11 @@ def main():
             vol_dir = os.path.join(base_dir, vol_dir)
         novel_title = sys.argv[2] if len(sys.argv) >= 3 else os.path.basename(vol_dir).split("_")[0]
         volume_title = sys.argv[3] if len(sys.argv) >= 4 else ""
-        author = sys.argv[4] if len(sys.argv) >= 5 else "老佛爷"
+        author = sys.argv[4] if len(sys.argv) >= 5 else "佚名"
     else:
-        # 默认自动搜寻 novels/ 目录下的子分卷
         candidate_dirs = [
-            os.path.join(base_dir, "novels", "挚友的女朋友喜欢我", "第1卷"),
-            os.path.join(base_dir, "novels", "配角在学院中生存", "正篇")
+            os.path.join(base_dir, "novels", "败北女角太多了！", "第9卷"),
+            os.path.join(base_dir, "novels", "在男性禁入的游戏世界里，我唯一该做的事情 我转生成了夹在百合之间的男人", "第9卷")
         ]
         vol_dir = None
         for d in candidate_dirs:
@@ -339,9 +518,9 @@ def main():
             print("用法: python to_epub.py <小说分卷目录> [小说名] [卷名] [作者]")
             return
 
-        novel_title = "挚友的女朋友喜欢我" if "挚友" in vol_dir else "配角在学院中生存"
-        volume_title = "第1卷" if "第1卷" in vol_dir else ("正篇" if "正篇" in vol_dir else "")
-        author = "老佛爷" if "挚友" in vol_dir else "Korita"
+        novel_title = "败北女角太多了！" if "败北" in vol_dir else "在男性禁入的游戏世界里，我唯一该做的事情 我转生成了夹在百合之间的男人"
+        volume_title = "第9卷"
+        author = "雨森焚火" if "败北" in vol_dir else "端桜了"
 
     generate_epub(vol_dir, novel_title=novel_title, volume_title=volume_title, author=author)
 

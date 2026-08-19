@@ -404,6 +404,15 @@ async def extract_subpage_items(page, subpage_url):
 
             function traverse(node) {
                 if (!node || node.nodeType !== 1) return;
+
+                // 忽略隐藏的黑白插图容器、广告及折叠区域（避免彩页重复收录正文黑白插图）
+                if (node.id === 'hidden-images' || node.id === 'show-more-images') return;
+                if (node.className && typeof node.className === 'string') {
+                    if (node.className.includes('hidden-images') || node.className.includes('dag') || node.className.includes('google-auto-placed')) {
+                        return;
+                    }
+                }
+
                 const tag = node.tagName.toLowerCase();
                 const rect = node.getBoundingClientRect();
 
@@ -431,7 +440,7 @@ async def extract_subpage_items(page, subpage_url):
                         }
                     }
                     const text = node.textContent.trim();
-                    if (text && !text.includes('adsbygoogle') && !text.includes('加載失敗')) {
+                    if (text && !text.includes('adsbygoogle') && !text.includes('加載失敗') && !text.includes('※黑白插图已内嵌正文※') && !text.includes('读者请无视')) {
                         const isDivider = /^[\\s\\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\\-_~=〜\\.\\s\\dIVXLCDMivxlcdm]{1,15}[\\s\\u3000]*$/.test(text);
                         if (isDivider || text.length <= 10) {
                             results.push({
@@ -446,7 +455,7 @@ async def extract_subpage_items(page, subpage_url):
                                 top: Math.round(rect.top + scrollY)
                             });
                         }
-                    } else if (imgs.length === 0) {
+                    } else if (imgs.length === 0 && !text.includes('※黑白插图已内嵌正文※') && !text.includes('读者请无视')) {
                         results.push({
                             type: 'scene_break',
                             symbol: '◇',
@@ -474,7 +483,7 @@ async def extract_subpage_items(page, subpage_url):
                     }
                     if (rect.height > 0) {
                         const text = node.textContent.trim();
-                        if (text && !text.includes('adsbygoogle') && !text.includes('內容加載失敗') && !text.includes('内容加载失败')) {
+                        if (text && !text.includes('adsbygoogle') && !text.includes('內容加載失敗') && !text.includes('内容加载失败') && !text.includes('※黑白插图已内嵌正文※') && !text.includes('点击可查看完整插图') && !text.includes('读者请无视') && !text.includes('以下为告示')) {
                             const isDivider = /^[\\s\\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\\-_~=〜\\.\\s]{1,15}[\\s\\u3000]*$/.test(text);
                             if (isDivider) {
                                 results.push({
