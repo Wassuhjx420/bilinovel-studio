@@ -177,9 +177,6 @@ def build_color_page_html(title, paragraphs, available_images, story_images=None
         if m_img:
             img_ref = m_img.group(1).strip()
             fname = os.path.basename(img_ref)
-            # 如果该图片在正文中已经被引用为黑白插图，则彩页部分不重复收录
-            if story_images and fname in story_images:
-                continue
 
             resolved_fname = None
             resolved_path = None
@@ -194,15 +191,6 @@ def build_color_page_html(title, paragraphs, available_images, story_images=None
                         break
 
             if resolved_path and os.path.isfile(resolved_path):
-                if story_hashes:
-                    try:
-                        with open(resolved_path, "rb") as f:
-                            img_h = hashlib.md5(f.read()).hexdigest()
-                        if img_h in story_hashes:
-                            # 属于正文黑白插图副本，彩页中剔除
-                            continue
-                    except Exception:
-                        pass
                 if resolved_fname not in gallery_images:
                     gallery_images.append(resolved_fname)
             continue
