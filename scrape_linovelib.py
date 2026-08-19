@@ -102,16 +102,18 @@ async def wait_for_turnstile(page, max_wait=25):
             for f in page.frames:
                 if "turnstile" in f.url or "challenges.cloudflare.com" in f.url:
                     try:
-                        b = await f.frame_element().bounding_box()
-                        if b and b['width'] > 0:
-                            cx = b['x'] + 35
-                            cy = b['y'] + b['height'] / 2
-                            print(f"  👆 检测到 Turnstile 验证，尝试自动点击 ({cx}, {cy})...")
-                            await page.mouse.move(cx, cy, steps=8)
-                            await page.wait_for_timeout(200)
-                            await page.mouse.click(cx, cy)
-                            clicked = True
-                            break
+                        fe = await f.frame_element()
+                        if fe:
+                            b = await fe.bounding_box()
+                            if b and b['width'] > 0:
+                                cx = b['x'] + 35
+                                cy = b['y'] + b['height'] / 2
+                                print(f"  👆 检测到 Turnstile 验证，尝试自动点击 ({cx}, {cy})...")
+                                await page.mouse.move(cx, cy, steps=8)
+                                await page.wait_for_timeout(200)
+                                await page.mouse.click(cx, cy)
+                                clicked = True
+                                break
                     except Exception:
                         pass
         await page.wait_for_timeout(500)
@@ -254,11 +256,15 @@ async def parse_catalog_volumes(page, catalog_url):
     await safe_goto(page, catalog_url, max_retries=3, timeout=45000)
     await wait_for_turnstile(page)
 
-    try:
-        await page.wait_for_selector(".volume, #volumes, .chapter-list, .dir-list, .volume-list", timeout=8000)
-    except Exception:
-        pass
-    await page.wait_for_timeout(300)
+    for _ in range(12):
+        try:
+            has_vol = await page.evaluate("() => !!document.querySelector('.volume, #volumes, .chapter-list, .dir-list, .volume-list')")
+            if has_vol:
+                break
+        except Exception:
+            pass
+        await wait_for_turnstile(page)
+        await asyncio.sleep(0.5)
 
     soup = BeautifulSoup(await page.content(), "html.parser")
 
