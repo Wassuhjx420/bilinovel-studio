@@ -127,6 +127,127 @@ def is_same_chapter_url(base_url, next_url):
     return False
 
 
+def is_valid_chapter_url(url):
+    """检验章节 URL 是否有效（过滤 javascript 伪链接与缺失占位符）"""
+    if not url:
+        return False
+    u = str(url).strip().lower()
+    if "javascript:" in u or "cid" in u or "/vol_" in u or "/catalog" in u:
+        return False
+    return bool(re.search(r"/\d+(?:_\d+)?\.html", u))
+
+
+async def repair_volume_chapters(page, chapters):
+    """
+    章节失效时的正反向递归自愈修复算法：
+    1. 反向修复 (Backward Repair)：当章节 N 失效时，向后寻找最近的有效章节 K，提取其阅读器 DOM 底部“上一页/上一章”链接逆向推导；
+    2. 正向修复 (Forward Repair)：若无法反向修复，则向前寻找最近的有效章节 J，遍历至其末尾子页提取“下一页/下一章”链接正向推导。
+    """
+    total_chs = len(chapters)
+    invalid_indices = [i for i, ch in enumerate(chapters) if not is_valid_chapter_url(ch.get("url"))]
+
+    if not invalid_indices:
+        return chapters
+
+    print(f"\n⚠️ 检测到 {len(invalid_indices)} 个失效/缺失章节链接，启动正反向自愈修复算法...")
+
+    for target_idx in invalid_indices:
+        if is_valid_chapter_url(chapters[target_idx].get("url")):
+            continue
+
+        ch_name = chapters[target_idx]["title"]
+        print(f"  🔧 正在尝试修复失效章节 [{target_idx+1}/{total_chs}] 《{ch_name}》...")
+
+        # 策略 1: 反向递归修复 (Backward Fix) - 寻找到后方最近的有效章节并提取其“上一页”
+        repaired = False
+        for next_idx in range(target_idx + 1, total_chs):
+            if is_valid_chapter_url(chapters[next_idx].get("url")):
+                curr_k = next_idx
+                while curr_k > target_idx:
+                    k_url = chapters[curr_k]["url"]
+                    await safe_goto(page, k_url, max_retries=2)
+                    await wait_for_turnstile(page)
+
+                    prev_url = await page.evaluate('''() => {
+                        const links = Array.from(document.querySelectorAll('a'));
+                        for (const a of links) {
+                            const txt = a.textContent.trim();
+                            const href = a.getAttribute('href');
+                            if (txt === '上一页' || txt === '上一頁' || txt === '上一章' || a.id === 'prevlink' || (a.className && a.className.includes('prevlink'))) {
+                                if (href && !href.startsWith('javascript')) return href;
+                            }
+                        }
+                        const mlfy = document.querySelector('.mlfy_page a');
+                        if (mlfy && mlfy.getAttribute('href') && !mlfy.getAttribute('href').startsWith('javascript')) {
+                            return mlfy.getAttribute('href');
+                        }
+                        return null;
+                    }''')
+
+                    if prev_url:
+                        full_prev = prev_url if prev_url.startswith("http") else f"{BASE_DOMAIN}{prev_url}"
+                        if is_valid_chapter_url(full_prev):
+                            clean_prev = re.sub(r"_(\d+)\.html$", ".html", full_prev)
+                            chapters[curr_k - 1]["url"] = clean_prev
+                            print(f"    ✨ 反向修复成功: [{curr_k}/{total_chs}] 《{chapters[curr_k-1]['title']}》 -> {clean_prev}")
+                            curr_k -= 1
+                        else:
+                            break
+                    else:
+                        break
+
+                if is_valid_chapter_url(chapters[target_idx].get("url")):
+                    repaired = True
+                    break
+
+        # 策略 2: 正向递归修复 (Forward Fix) - 从前方有效章节末尾提取“下一页”
+        if not repaired:
+            for prev_idx in range(target_idx - 1, -1, -1):
+                if is_valid_chapter_url(chapters[prev_idx].get("url")):
+                    curr_j = prev_idx
+                    while curr_j < target_idx:
+                        j_url = chapters[curr_j]["url"]
+                        last_subpage = j_url
+                        while last_subpage:
+                            await safe_goto(page, last_subpage, max_retries=2)
+                            await wait_for_turnstile(page)
+                            next_url = await page.evaluate('''() => {
+                                if (typeof ReadParams !== 'undefined' && ReadParams && ReadParams.url_next) return ReadParams.url_next;
+                                if (typeof nextpage !== 'undefined' && nextpage) return nextpage;
+                                const links = Array.from(document.querySelectorAll('a'));
+                                for (const a of links) {
+                                    const txt = a.textContent.trim();
+                                    const href = a.getAttribute('href');
+                                    if (txt === '下一页' || txt === '下一頁' || txt === '下一章' || a.id === 'nextlink' || (a.className && a.className.includes('nextlink'))) {
+                                        if (href && !href.startsWith('javascript')) return href;
+                                    }
+                                }
+                                return null;
+                            }''')
+                            if next_url:
+                                full_next = next_url if next_url.startswith("http") else f"{BASE_DOMAIN}{next_url}"
+                                if is_same_chapter_url(j_url, full_next) and full_next != last_subpage:
+                                    last_subpage = full_next
+                                else:
+                                    clean_next = re.sub(r"_(\d+)\.html$", ".html", full_next)
+                                    if is_valid_chapter_url(clean_next):
+                                        chapters[curr_j + 1]["url"] = clean_next
+                                        print(f"    ✨ 正向修复成功: [{curr_j+2}/{total_chs}] 《{chapters[curr_j+1]['title']}》 -> {clean_next}")
+                                        curr_j += 1
+                                    break
+                            else:
+                                break
+
+                    if is_valid_chapter_url(chapters[target_idx].get("url")):
+                        repaired = True
+                        break
+
+        if not is_valid_chapter_url(chapters[target_idx].get("url")):
+            print(f"    ⚠️ 章节 《{ch_name}》 无法自动推导修复，可能已被完全下架。")
+
+    return chapters
+
+
 async def parse_catalog_volumes(page, catalog_url):
     """从目录页提取所有分卷及其所属章节列表（支持桌面版与响应式两种模板）"""
     print(f"正在访问目录页: {catalog_url} ...")
@@ -534,6 +655,9 @@ async def scrape_volume_async(novel_input, target_vol_param=None, custom_novel_n
 
         print(f"\n🚀 开始抓取目标分卷: [{vol_name}] (卷序号: {target_vol_idx}/{len(volumes)}, 共 {len(chapters)} 章)")
 
+        # 执行失效/缺失章节链接正反向自愈修复
+        chapters = await repair_volume_chapters(main_page, chapters)
+
         # 3. 初始化保存目录
         safe_novel_name = re.sub(r'[\\/:*?"<>|]', "_", novel_title)
         safe_vol_name = re.sub(r'[\\/:*?"<>|]', "_", vol_name)
@@ -553,7 +677,8 @@ async def scrape_volume_async(novel_input, target_vol_param=None, custom_novel_n
         os.makedirs(images_dir, exist_ok=True)
 
         # 4. 方案 3：创建多 Tab Worker 并发抓取章节
-        num_workers = min(CONCURRENT_TABS, len(chapters))
+        valid_chapters = [ch for ch in chapters if is_valid_chapter_url(ch.get("url"))]
+        num_workers = min(CONCURRENT_TABS, len(valid_chapters)) if valid_chapters else 1
         worker_pages = [main_page]
         for _ in range(num_workers - 1):
             wp = await ctx.new_page()
@@ -566,7 +691,8 @@ async def scrape_volume_async(novel_input, target_vol_param=None, custom_novel_n
 
         task_queue = asyncio.Queue()
         for idx, ch in enumerate(chapters, 1):
-            await task_queue.put((idx, ch))
+            if is_valid_chapter_url(ch.get("url")):
+                await task_queue.put((idx, ch))
 
         chapter_raw_results = {}
         t_crawl_start = time.time()

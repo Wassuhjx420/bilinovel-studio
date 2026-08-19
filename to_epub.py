@@ -210,6 +210,21 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
     book.set_language("zh")
     book.add_author(author)
 
+    # 提取卷号与系列信息（支持 Calibre 与 Kavita 媒体库系列自动归类）
+    m_idx = re.search(r"(\d+(?:\.\d+)?)", volume_title)
+    if not m_idx:
+        m_idx = re.search(r"(\d+(?:\.\d+)?)", full_book_title)
+    series_index = m_idx.group(1) if m_idx else "1"
+
+    # 写入 Calibre 2.0 / 3.0 系列元数据
+    book.add_metadata(None, "meta", "", {"name": "calibre:series", "content": novel_title})
+    book.add_metadata(None, "meta", "", {"name": "calibre:series_index", "content": series_index})
+
+    # 写入 EPUB 3 / Kavita 规范 Collection 系列元数据
+    book.add_metadata(None, "meta", novel_title, {"property": "belongs-to-collection", "id": "series_collection"})
+    book.add_metadata(None, "meta", "series", {"refines": "#series_collection", "property": "collection-type"})
+    book.add_metadata(None, "meta", series_index, {"refines": "#series_collection", "property": "group-position"})
+
     # 添加样式表
     css_item = epub.EpubItem(
         uid="style",
