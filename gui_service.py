@@ -262,77 +262,11 @@ class GuiService:
             catalog_has_content = bool(catalog_html and any(tag in catalog_html for tag in ['class="volume', 'id="volumes', 'class="chapter-list', 'dir-list']))
             detail_has_content = bool(detail_html and any(tag in detail_html for tag in ['book-info', 'book-detail', 'og:novel:book_name']))
 
-            # 紧急保底通道：若双通道皆因 Cloudflare 验证或严重超时受阻
+            # 若双通道皆未能加载到有效内容（网络故障、严重超时或 Cloudflare 阻断）
             if not catalog_has_content and not detail_has_content:
-                self.log("info", "PARSER", f"已启用小说 #{novel_id} 极速元数据解析通道")
-                preset_data = {
-                    "3095": {
-                        "title": "败北女角太多了！",
-                        "author": "雨森焚火",
-                        "illustrator": "伊右群",
-                        "category": "青春 / 校园 / 恋爱 / 搞笑",
-                        "status": "连载中",
-                        "cover": f"{BASE_DOMAIN}/files/article/image/3/3095/3095s.jpg",
-                        "description": "平常担任班上背景人物的我──温水和彦，偶然目击人气女同学八奈见杏菜被男生甩掉的失恋现场。\n「他明明说过要娶我当新娘，这不过分吗？」\n「那是多久前的事了？」\n「大概四、五岁吧。」\n那不算数吧？以此为契机，田径队的烧盐柠檬、文艺社的小鞠知花等洋溢着败北感的女生接连登场──？\n「温水，女生可以分成两大类。如果不是青梅竹马，就是狐狸精。」\n「原来如此，真豪爽的分类法。」\n……但愿这些因为败北而闪耀的少女们都能幸福。被败北女角──败女所环绕的谜样青春，在此揭幕！\n别名：败犬女主太多了！",
-                        "vols": [("第1卷", 16), ("第2卷", 18), ("第3卷", 20), ("第4卷", 17), ("第5卷", 19), ("第6卷", 21), ("第7卷", 22), ("第8卷", 20), ("第9卷 (最新)", 24)]
-                    },
-                    "5131": {
-                        "title": "在男性禁入的游戏世界里，我唯一该做的事情 我转生成了夹在百合之间的男人",
-                        "author": "タカハシ",
-                        "illustrator": "冬野春秋",
-                        "category": "穿越 / 百合夹心 / 奇幻 / 胃痛",
-                        "status": "连载中",
-                        "cover": f"{BASE_DOMAIN}/files/article/image/5/5131/5131s.jpg",
-                        "description": "转生到了女性向百合游戏世界，身为唯一的男性，我只想作为旁观者守护她们，却不知为何被卷入了修罗场之中……",
-                        "vols": [("第1卷", 18), ("第2卷", 22), ("第9卷", 25), ("第10卷 (最新)", 26)]
-                    },
-                    "3807": {
-                        "title": "配角在学院中生存",
-                        "author": "Toika",
-                        "illustrator": "韩轻插画",
-                        "category": "韩轻 / 学院 / 生存 / 魔法",
-                        "status": "已完结",
-                        "cover": f"{BASE_DOMAIN}/files/article/image/3/3807/3807s.jpg",
-                        "description": "穿越成了著名动作RPG游戏中开局就退学的无名反派配角。为了在危机四伏的席尔维尼亚魔法学院活下去，开始荒野求生！",
-                        "vols": [("正篇全集 (第1~212章)", 212), ("外传1", 15), ("外传2", 16), ("外传3", 14), ("外传4 (完结)", 18)]
-                    }
-                }
-                meta = preset_data.get(novel_id, {
-                    "title": f"轻小说 #{novel_id}",
-                    "author": "官方作者",
-                    "illustrator": "官方画师",
-                    "category": "日轻 / 奇幻 / 冒险",
-                    "status": "连载中",
-                    "cover": f"{BASE_DOMAIN}/files/article/image/{int(novel_id)//1000}/{novel_id}/{novel_id}s.jpg",
-                    "description": f"已成功加载小说 ID #{novel_id} 的目录结构与元数据信息。",
-                    "vols": [("第1卷", 16), ("第2卷", 18), ("第3卷 (最新)", 20)]
-                })
-
-                vols_list = []
-                for v_idx, (v_name, c_cnt) in enumerate(meta["vols"], 1):
-                    vols_list.append({
-                        "id": f"vol_{v_idx}",
-                        "vol_target_id": f"{novel_id}_{v_idx}",
-                        "title": v_name,
-                        "chapterCount": c_cnt,
-                        "cover": meta["cover"],
-                        "selected": False
-                    })
-
                 await ctx.close()
-                result = {
-                    "novel_id": novel_id,
-                    "title": meta["title"],
-                    "author": meta["author"],
-                    "illustrator": meta["illustrator"],
-                    "category": meta["category"],
-                    "status": meta["status"],
-                    "cover": meta["cover"],
-                    "description": meta["description"],
-                    "volumes": vols_list
-                }
-                self.log("success", "PARSER", f"元数据解析完成: 《{meta['title']}》 [共 {len(vols_list)} 卷]")
-                return result
+                self.log("error", "PARSER", f"未能获取小说 #{novel_id} 的目录或详情内容，页面加载超时或受站点安全验证阻断")
+                raise Exception(f"未能获取小说 #{novel_id} 的有效内容，页面加载超时或受站点安全验证阻断，请检查网络或稍后重试。")
 
             detail_soup = BeautifulSoup(detail_html, "html.parser") if detail_html else None
             catalog_soup = BeautifulSoup(catalog_html, "html.parser") if catalog_html else None
