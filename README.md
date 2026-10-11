@@ -138,7 +138,7 @@ build_release.bat
 执行后将在 `dist/` 目录下生成：
 * `dist/BiliNovelStudio/`：免安装绿色运行时目录（已内嵌专属文件夹图标）；
 * `dist/BiliNovelStudio_Portable.zip`：便携发布压缩包；
-* `dist/BiliNovelStudio_Setup_v1.0.0.exe`：全中文两步极简安装向导。
+* `dist/BiliNovelStudio_Setup_v1.1.0.exe`：全中文两步极简安装向导。
 
 ---
 

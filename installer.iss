@@ -3,7 +3,7 @@
 ; =====================================================================
 
 #define MyAppName "哔哩轻小说 Studio Pro"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "BiliNovelStudio"
 #define MyAppURL "https://github.com"
 #define MyAppExeName "BiliNovelStudio.exe"
@@ -29,7 +29,7 @@ DisableProgramGroupPage=yes
 
 ; 产物配置
 OutputDir=dist
-OutputBaseFilename=BiliNovelStudio_Setup_v1.0.0
+OutputBaseFilename=BiliNovelStudio_Setup_v1.1.0
 
 ; 专属应用程序与卸载图标绑定
 SetupIconFile=gui\app_icon.ico

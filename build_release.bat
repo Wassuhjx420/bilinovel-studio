@@ -83,10 +83,10 @@ if "%ISCC_PATH%"=="" (
 
 if not "%ISCC_PATH%"=="" (
     echo [*] 发现 Inno Setup 编译器: %ISCC_PATH%
-    echo [*] 正在编译安装向导安装包 (BiliNovelStudio_Setup_v1.0.0.exe)...
+    echo [*] 正在编译安装向导安装包 (BiliNovelStudio_Setup_v1.1.0.exe)...
     "%ISCC_PATH%" installer.iss /Q
-    if exist "dist\BiliNovelStudio_Setup_v1.0.0.exe" (
-        echo [√] Windows 安装包制作完成: dist\BiliNovelStudio_Setup_v1.0.0.exe
+    if exist "dist\BiliNovelStudio_Setup_v1.1.0.exe" (
+        echo [√] Windows 安装包制作完成: dist\BiliNovelStudio_Setup_v1.1.0.exe
     )
 ) else (
     echo [提示] 本机未检测到 Inno Setup 6。
@@ -103,8 +103,8 @@ echo ================================================================
 echo   🎉 全部打包构建完成！
 echo   - 绿色免安装目录: dist\BiliNovelStudio\
 echo   - 开箱即用发布包: dist\BiliNovelStudio_Portable.zip
-if exist "dist\BiliNovelStudio_Setup_v1.0.0.exe" (
-    echo   - 安装向导安装包: dist\BiliNovelStudio_Setup_v1.0.0.exe
+if exist "dist\BiliNovelStudio_Setup_v1.1.0.exe" (
+    echo   - 安装向导安装包: dist\BiliNovelStudio_Setup_v1.1.0.exe
 )
 echo ================================================================
 echo.
