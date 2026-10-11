@@ -23,8 +23,12 @@ if %errorlevel% neq 0 (
 
 :: 2. 清理历史构建缓存
 echo [*] 正在清理旧版本构建缓存 (build/ 与 dist/)...
+if exist dist (
+    attrib -r -h -s dist\*.* /s /d >nul 2>&1
+    attrib -r -h -s dist >nul 2>&1
+    rmdir /s /q dist
+)
 if exist build rmdir /s /q build
-if exist dist rmdir /s /q dist
 
 :: 3. 执行 PyInstaller 打包构建
 echo.
