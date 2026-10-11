@@ -105,12 +105,12 @@ p {
   border-radius: 4px;
 }
 .scene-break {
-  margin: 1.8em auto !important;
+  margin: 1.4em auto !important;
   text-indent: 0 !important;
   text-align: center !important;
-  color: #777;
-  font-size: 1.15em;
-  letter-spacing: 0.35em;
+  color: #666;
+  font-size: 1.1em;
+  letter-spacing: 0.3em;
   line-height: 1;
 }
 .scene-break span {
@@ -118,10 +118,11 @@ p {
   opacity: 0.85;
 }
 .scene-break.blank {
-  margin: 1.6em 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
   text-indent: 0 !important;
-  height: 1.2em;
-  line-height: 1.2;
+  height: 1.1em;
+  line-height: 1.1;
 }
 .warning-box {
   margin: 2em 0;
@@ -171,11 +172,11 @@ def parse_chapters(text):
             line_str = line.strip()
             if line_str:
                 current_body.append(line_str)
-            elif current_body and current_body[-1] != "[场景分隔]":
+            elif current_body and not current_body[-1].startswith("[场景分隔"):
                 current_body.append("[场景分隔]")
 
         # 去除章节末尾多余的场景分隔
-        while current_body and current_body[-1] == "[场景分隔]":
+        while current_body and current_body[-1].startswith("[场景分隔"):
             current_body.pop()
 
     if current_title:
@@ -314,6 +315,8 @@ def build_chapter_html(title, paragraphs, available_images):
         if m_break:
             sym = m_break.group(1).strip() if m_break.group(1) else ""
             if sym:
+                if body_parts and body_parts[-1].startswith('<p class="scene-break blank'):
+                    body_parts.pop()
                 body_parts.append(f'<p class="scene-break"><span>{html.escape(sym)}</span></p>')
             else:
                 if body_parts and not body_parts[-1].startswith('<p class="scene-break'):
@@ -326,19 +329,21 @@ def build_chapter_html(title, paragraphs, available_images):
                 body_parts.append('<p class="scene-break blank">&#160;</p>')
             continue
 
-        # 2. 检查是否为单行独立符号分隔符（如 "◇", "◆", "* * *", "---", "——" 等）
-        if re.match(r"^[\s\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\-_~=〜\.\s]{1,15}[\s\u3000]*$", para):
+        # 3. 检查是否为单行独立符号分隔符（如 "◇", "◆", "* * *", "---", "——" 等）
+        if re.match(r"^[\s\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\-_~=〜\.\s\dIVXLCDMivxlcdm]{1,15}[\s\u3000]*$", para):
             sym = para.strip()
             if sym:
+                if body_parts and body_parts[-1].startswith('<p class="scene-break blank'):
+                    body_parts.pop()
                 body_parts.append(f'<p class="scene-break"><span>{html.escape(sym)}</span></p>')
                 continue
 
-        # 3. 检查是否为内容获取异常警告
+        # 4. 检查是否为内容获取异常警告
         if para.startswith("【内容获取异常：") or para.startswith("【抓取异常："):
             body_parts.append(f'<div class="warning-box"><p>⚠️ {html.escape(para)}</p></div>')
             continue
 
-        # 4. 检查是否为插图标记
+        # 5. 检查是否为插图标记
         m = re.match(r"^\[插图:\s*(.+?)\]$", para)
         if m:
             img_ref = m.group(1).strip()
@@ -357,14 +362,14 @@ def build_chapter_html(title, paragraphs, available_images):
                     print(f"⚠️ [EPUB] 章节《{title}》中标记的插图文件未在本地插图库中找到: {fname}")
             continue
 
-        # 5. 普通正文
+        # 6. 普通正文
         escaped = html.escape(para)
         body_parts.append(f"<p>{escaped}</p>")
 
-    # 去除首尾多余的空场景分隔
-    while body_parts and body_parts[0].startswith('<p class="scene-break blank'):
+    # 去除首尾多余的场景分隔
+    while body_parts and body_parts[0].startswith('<p class="scene-break'):
         body_parts.pop(0)
-    while body_parts and body_parts[-1].startswith('<p class="scene-break blank'):
+    while body_parts and body_parts[-1].startswith('<p class="scene-break'):
         body_parts.pop()
 
     body_html = "\n  ".join(body_parts)

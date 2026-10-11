@@ -535,7 +535,7 @@ async def extract_subpage_items(page, subpage_url):
             except Exception:
                 pass
 
-            items = await page.evaluate('''() => {
+            items = await page.evaluate(r'''() => {
                 const container = document.querySelector('#TextContent') || document.querySelector('#acontent') || document.querySelector('.read-content');
                 if (!container) return [];
 
@@ -635,7 +635,10 @@ async def extract_subpage_items(page, subpage_url):
                         }
                         const text = cleanRubyText(node);
                         if (text && !text.includes('adsbygoogle') && !text.includes('加載失敗') && !text.includes('※黑白插图已内嵌正文※') && !text.includes('读者请无视')) {
-                            const isDivider = /^[\\s\\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\\-_~=〜\\.\\s\\dIVXLCDMivxlcdm]{1,15}[\\s\\u3000]*$/.test(text);
+                            const isDivider = /^[\s\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\-_~=〜\.\s\dIVXLCDMivxlcdm]{1,15}[\s\u3000]*$/.test(text);
+                            if (results.length > 0 && results[results.length - 1].type === 'scene_break' && !results[results.length - 1].symbol) {
+                                results.pop();
+                            }
                             if (isDivider || text.length <= 10) {
                                 results.push({
                                     type: 'scene_break',
@@ -648,6 +651,9 @@ async def extract_subpage_items(page, subpage_url):
                                 });
                             }
                         } else if (imgs.length === 0 && !text.includes('※黑白插图已内嵌正文※') && !text.includes('读者请无视')) {
+                            if (results.length > 0 && results[results.length - 1].type === 'scene_break' && !results[results.length - 1].symbol) {
+                                results.pop();
+                            }
                             results.push({
                                 type: 'scene_break',
                                 symbol: '◇'
@@ -658,6 +664,9 @@ async def extract_subpage_items(page, subpage_url):
 
                     if (tag === 'hr') {
                         if (isElementVisible(node)) {
+                            if (results.length > 0 && results[results.length - 1].type === 'scene_break' && !results[results.length - 1].symbol) {
+                                results.pop();
+                            }
                             results.push({
                                 type: 'scene_break',
                                 symbol: '◇'
@@ -678,8 +687,11 @@ async def extract_subpage_items(page, subpage_url):
 
                         const text = cleanRubyText(node);
                         if (text && !text.includes('adsbygoogle') && !text.includes('內容加載失敗') && !text.includes('内容加载失败') && !text.includes('※黑白插图已内嵌正文※') && !text.includes('点击可查看完整插图') && !text.includes('读者请无视') && !text.includes('以下为告示')) {
-                            const isDivider = /^[\\s\\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\\-_~=〜\\.\\s]{1,15}[\\s\\u3000]*$/.test(text);
+                            const isDivider = /^[\s\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\-_~=〜\.\s\dIVXLCDMivxlcdm]{1,15}[\s\u3000]*$/.test(text);
                             if (isDivider) {
+                                if (results.length > 0 && results[results.length - 1].type === 'scene_break' && !results[results.length - 1].symbol) {
+                                    results.pop();
+                                }
                                 results.push({
                                     type: 'scene_break',
                                     symbol: text
@@ -818,9 +830,11 @@ async def scrape_chapter_with_pagination(page, first_url):
                     seen_imgs.add(src)
                     all_items.append(item)
             elif itype == "scene_break":
-                if all_items and all_items[-1]["type"] == "scene_break":
-                    continue
                 if not all_items:
+                    continue
+                if all_items[-1]["type"] == "scene_break":
+                    if item.get("symbol") and not all_items[-1].get("symbol"):
+                        all_items[-1] = item
                     continue
                 all_items.append(item)
 
@@ -832,7 +846,7 @@ async def scrape_chapter_with_pagination(page, first_url):
         else:
             curr_url = None
 
-    while all_items and all_items[-1]["type"] == "scene_break" and not all_items[-1].get("symbol"):
+    while all_items and all_items[-1]["type"] == "scene_break":
         all_items.pop()
 
     return all_items
