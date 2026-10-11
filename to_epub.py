@@ -1,6 +1,11 @@
 """
 将爬取的小说文本 + 插图整合为标准 EPUB 电子书
 支持标准日轻排版规范：封面 -> 本卷信息和简介 -> 彩页 -> 正文（内嵌黑白插图）
+
+Disclaimer / 免责声明:
+本项目仅供 Python 自动化技术交流与个人离线阅读研究使用。
+小说内容及插图版权均归原作者及轻小说出版方所有。
+严禁将本项目及衍生工具用于任何商业营利目的。
 """
 
 import os
@@ -72,25 +77,28 @@ p {
   line-height: 1.8;
   color: #444;
 }
-.illustration {
+.synopsis-subtitle {
+  text-align: center;
+  font-size: 1.05em;
+  font-weight: bold;
+  margin: 1.2em 0 0.4em;
+  text-indent: 0 !important;
+  color: #333;
+  letter-spacing: 0.1em;
+}
+.synopsis-break {
+  margin: 0.8em 0 !important;
+  text-indent: 0 !important;
+  height: 0.5em;
+  line-height: 0.5;
+}
+.illustration, .gallery-item, .duokan-image-single {
   text-align: center;
   text-indent: 0 !important;
   margin: 1.8em 0;
   page-break-inside: avoid;
 }
-.illustration img {
-  max-width: 100%;
-  height: auto;
-  display: inline-block;
-  border-radius: 4px;
-}
-.gallery-item {
-  text-align: center;
-  text-indent: 0 !important;
-  margin: 1.8em 0;
-  page-break-inside: avoid;
-}
-.gallery-item img {
+.illustration img, .gallery-item img, .duokan-image-single img {
   max-width: 100%;
   height: auto;
   display: inline-block;
@@ -108,6 +116,27 @@ p {
 .scene-break span {
   display: inline-block;
   opacity: 0.85;
+}
+.scene-break.blank {
+  margin: 1.6em 0 !important;
+  text-indent: 0 !important;
+  height: 1.2em;
+  line-height: 1.2;
+}
+.warning-box {
+  margin: 2em 0;
+  padding: 1.2em 1.5em;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-left: 5px solid #ff4d4f;
+  border-radius: 4px;
+  color: #cf1322;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+.warning-box p {
+  text-indent: 0 !important;
+  margin: 0.4em 0;
 }
 """
 
@@ -142,6 +171,12 @@ def parse_chapters(text):
             line_str = line.strip()
             if line_str:
                 current_body.append(line_str)
+            elif current_body and current_body[-1] != "[场景分隔]":
+                current_body.append("[场景分隔]")
+
+        # 去除章节末尾多余的场景分隔
+        while current_body and current_body[-1] == "[场景分隔]":
+            current_body.pop()
 
     if current_title:
         chapters.append((current_title, current_body))
@@ -155,7 +190,7 @@ def build_color_page_html(title, paragraphs, available_images, story_images=None
     包含：制作/录入信息、简介框、仅卷首全彩插图（彻底排除正文黑白插图）
     """
     info_lines = []
-    synopsis_lines = []
+    synopsis_items = []
     gallery_images = []
 
     in_synopsis = False
@@ -195,19 +230,43 @@ def build_color_page_html(title, paragraphs, available_images, story_images=None
                     gallery_images.append(resolved_fname)
             continue
 
+        # 检测场景分隔符标记及独立纯符号行（如 ————, ◇ 等）
+        m_break = re.match(r"^\[(?:场景分隔|分隔符|scene_break)(?::\s*(.+?))?\]$", para, re.IGNORECASE)
+        is_divider_sym = re.match(r"^[\s\u3000]*[◇◆*＊☆★▲▼※§□■○●·•—\-_~=〜\.\s]{1,15}[\s\u3000]*$", para)
+
         # 简介开始标记
         if para.startswith("内容简介") or para.startswith("简介"):
             in_synopsis = True
             continue
 
-        if para.startswith("———") or para.startswith("───") or para.startswith("==="):
+        # 纯分隔线结束简介（如连续三个以上等号或破折号）
+        if (para.startswith("———") or para.startswith("───") or para.startswith("===")) and len(para) <= 30 and all(c in '—─=-_ ' for c in para.strip()):
             in_synopsis = False
             continue
 
         if in_synopsis:
-            synopsis_lines.append(para)
+            if m_break or is_divider_sym:
+                if synopsis_items and not synopsis_items[-1].startswith('<p class="synopsis-break"'):
+                    synopsis_items.append('<p class="synopsis-break">&#160;</p>')
+                continue
+
+            # 支持简介内部的作者/画师简介次级标题美化排版
+            if para in ('作者简介', '画师简介', '插画师简介', '插画简介', '原案简介', '作者', '画师', '插画') or para.startswith(('作者简介：', '画师简介：', '作者简介:', '画师简介:')):
+                synopsis_items.append(f'<h4 class="synopsis-subtitle">{html.escape(para)}</h4>')
+                continue
+
+            synopsis_items.append(f'<p>{html.escape(para)}</p>')
         else:
+            # 制作/录入信息块：直接剔除场景分隔符标记与纯符号行（容器自带底部标准居中下边线）
+            if m_break or is_divider_sym:
+                continue
             info_lines.append(para)
+
+    # 清理简介容器首尾多余的空行留白
+    while synopsis_items and synopsis_items[0].startswith('<p class="synopsis-break"'):
+        synopsis_items.pop(0)
+    while synopsis_items and synopsis_items[-1].startswith('<p class="synopsis-break"'):
+        synopsis_items.pop()
 
     body_parts = []
     body_parts.append(f'<h2>{html.escape(title)}</h2>')
@@ -219,16 +278,16 @@ def build_color_page_html(title, paragraphs, available_images, story_images=None
         body_parts.append('</div>')
         body_parts.append('<p class="divider">————————————————</p>')
 
-    if synopsis_lines:
+    if synopsis_items:
         body_parts.append('<div class="synopsis">')
         body_parts.append('  <h3 class="synopsis-title">内容简介</h3>')
-        for l in synopsis_lines:
-            body_parts.append(f'  <p>{html.escape(l)}</p>')
+        for item in synopsis_items:
+            body_parts.append(f'  {item}')
         body_parts.append('</div>')
 
     if gallery_images:
         for img_name in gallery_images:
-            body_parts.append(f'<div class="gallery-item"><img src="images/{img_name}" alt="彩页"/></div>')
+            body_parts.append(f'<div class="gallery-item duokan-image-single"><img src="images/{img_name}" alt="彩页"/></div>')
 
     body_html = "\n  ".join(body_parts)
     return f"""<?xml version="1.0" encoding="utf-8"?>
@@ -250,14 +309,21 @@ def build_chapter_html(title, paragraphs, available_images):
     body_parts = []
 
     for para in paragraphs:
-        if not para:
-            continue
-
         # 1. 检查是否为显式场景分隔符标记
         m_break = re.match(r"^\[(?:场景分隔|分隔符|scene_break)(?::\s*(.+?))?\]$", para, re.IGNORECASE)
         if m_break:
-            sym = m_break.group(1).strip() if m_break.group(1) else "◇"
-            body_parts.append(f'<p class="scene-break"><span>{html.escape(sym)}</span></p>')
+            sym = m_break.group(1).strip() if m_break.group(1) else ""
+            if sym:
+                body_parts.append(f'<p class="scene-break"><span>{html.escape(sym)}</span></p>')
+            else:
+                if body_parts and not body_parts[-1].startswith('<p class="scene-break'):
+                    body_parts.append('<p class="scene-break blank">&#160;</p>')
+            continue
+
+        # 2. 检查是否为空段落/纯空行
+        if not para:
+            if body_parts and not body_parts[-1].startswith('<p class="scene-break'):
+                body_parts.append('<p class="scene-break blank">&#160;</p>')
             continue
 
         # 2. 检查是否为单行独立符号分隔符（如 "◇", "◆", "* * *", "---", "——" 等）
@@ -267,13 +333,18 @@ def build_chapter_html(title, paragraphs, available_images):
                 body_parts.append(f'<p class="scene-break"><span>{html.escape(sym)}</span></p>')
                 continue
 
-        # 3. 检查是否为插图标记
+        # 3. 检查是否为内容获取异常警告
+        if para.startswith("【内容获取异常：") or para.startswith("【抓取异常："):
+            body_parts.append(f'<div class="warning-box"><p>⚠️ {html.escape(para)}</p></div>')
+            continue
+
+        # 4. 检查是否为插图标记
         m = re.match(r"^\[插图:\s*(.+?)\]$", para)
         if m:
             img_ref = m.group(1).strip()
             fname = os.path.basename(img_ref)
             if fname in available_images:
-                body_parts.append(f'<div class="illustration"><img src="images/{fname}" alt="插图"/></div>')
+                body_parts.append(f'<div class="illustration duokan-image-single"><img src="images/{fname}" alt="插图"/></div>')
             else:
                 matched = None
                 for af in available_images:
@@ -281,12 +352,20 @@ def build_chapter_html(title, paragraphs, available_images):
                         matched = af
                         break
                 if matched:
-                    body_parts.append(f'<div class="illustration"><img src="images/{matched}" alt="插图"/></div>')
+                    body_parts.append(f'<div class="illustration duokan-image-single"><img src="images/{matched}" alt="插图"/></div>')
+                else:
+                    print(f"⚠️ [EPUB] 章节《{title}》中标记的插图文件未在本地插图库中找到: {fname}")
             continue
 
-        # 4. 普通正文
+        # 5. 普通正文
         escaped = html.escape(para)
         body_parts.append(f"<p>{escaped}</p>")
+
+    # 去除首尾多余的空场景分隔
+    while body_parts and body_parts[0].startswith('<p class="scene-break blank'):
+        body_parts.pop(0)
+    while body_parts and body_parts[-1].startswith('<p class="scene-break blank'):
+        body_parts.pop()
 
     body_html = "\n  ".join(body_parts)
 
@@ -305,25 +384,31 @@ def build_chapter_html(title, paragraphs, available_images):
 </html>"""
 
 
-def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="佚名", output_file=None):
+def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="佚名", output_file=None, chapters_data=None):
     """从卷目录生成符合日轻标准排版的 EPUB 电子书（封面 -> 本卷信息和简介 -> 彩页 -> 正文）"""
     if not os.path.isdir(volume_dir):
         raise ValueError(f"目录不存在: {volume_dir}")
 
     images_dir = os.path.join(volume_dir, "插图")
-    txt_files = [f for f in os.listdir(volume_dir) if f.endswith("_完整版.txt")]
-    if not txt_files:
-        txt_files = [f for f in os.listdir(volume_dir) if f.endswith(".txt")]
-    if not txt_files:
-        raise FileNotFoundError(f"在 {volume_dir} 中未找到小说文本文件（.txt）")
 
-    text_file = os.path.join(volume_dir, txt_files[0])
-    print(f"正在读取文本: {os.path.basename(text_file)}")
-    with open(text_file, "r", encoding="utf-8") as f:
-        full_text = f.read()
+    if chapters_data and isinstance(chapters_data, list):
+        chapters = chapters_data
+        print(f"直接载入结构化章节列表，共 {len(chapters)} 个章节")
+    else:
+        txt_files = [f for f in os.listdir(volume_dir) if f.endswith("_完整版.txt")]
+        if not txt_files:
+            txt_files = [f for f in os.listdir(volume_dir) if f.endswith(".txt")]
+        if not txt_files:
+            raise FileNotFoundError(f"在 {volume_dir} 中未找到小说文本文件（.txt）")
 
-    chapters = parse_chapters(full_text)
-    print(f"成功解析出 {len(chapters)} 个章节")
+        text_file = os.path.join(volume_dir, txt_files[0])
+        print(f"正在读取文本: {os.path.basename(text_file)}")
+        with open(text_file, "r", encoding="utf-8") as f:
+            full_text = f.read()
+
+        chapters = parse_chapters(full_text)
+        print(f"成功解析出 {len(chapters)} 个章节")
+
 
     # 扫描插图目录
     available_images = {}
@@ -340,6 +425,19 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
     if not output_file:
         safe_name = re.sub(r'[\\/:*?"<>|]', "_", full_book_title)
         output_file = os.path.join(volume_dir, f"{safe_name}.epub")
+
+    # 自动尝试从正文卷首信息中提取真实作者
+    if author in ("佚名", "官方作者", ""):
+        for ch_t, ch_paras in chapters[:2]:
+            for p in ch_paras:
+                m_auth = re.search(r"作者[：:\s]+([^\r\n/]+)", p)
+                if m_auth:
+                    cand = m_auth.group(1).strip()
+                    if cand and len(cand) < 30:
+                        author = cand
+                        break
+            if author not in ("佚名", "官方作者", ""):
+                break
 
     # 初始化 EPUB Book
     book = epub.EpubBook()
@@ -426,7 +524,7 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
   </style>
 </head>
 <body>
-  <div class="cover-container">
+  <div class="cover-container duokan-image-single">
     <img class="cover-img" src="images/cover.jpg" alt="封面"/>
   </div>
 </body>

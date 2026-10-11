@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BiliNovel Studio — Apple Fluid Edition</title>
+  <link rel="icon" type="image/png" href="app_icon.png">
+  <link rel="shortcut icon" href="app_icon.ico">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: ['selector', '[data-theme="dark"]']
+    }
+  </script>
+
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <!-- Apple Design System Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-screen flex antialiased selection:bg-[#0a84ff] selection:text-white">
+  <div id="app" class="flex w-full h-screen overflow-hidden">
+
+    <!-- Sonner-Style Apple Stacked Toast Notification -->
+    <transition enter-active-class="transform ease-out duration-300 transition"
+                enter-from-class="translate-y-4 opacity-0 scale-95"
+                enter-to-class="translate-y-0 opacity-100 scale-100"
+                leave-active-class="transition ease-in duration-180"
+                leave-from-class="opacity-100 scale-100"
+                leave-to-class="opacity-0 scale-95">
+      <div v-if="toast.show" 
+           class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 sonner-toast border text-xs font-medium"
+           :class="{
+             'border-[#30d158]/40 text-[#30d158]': toast.type === 'success',
+             'border-[#0a84ff]/40 text-[#0a84ff]': toast.type === 'info',
+             'border-[#ff9f0a]/40 text-[#ff9f0a]': toast.type === 'warn',
+             'border-[#ff453a]/40 text-[#ff453a]': toast.type === 'error'
+           }">
+        <span class="w-2 h-2 rounded-full shrink-0 shadow-sm"
+              :class="{
+                'bg-[#30d158]': toast.type === 'success',
+                'bg-[#0a84ff]': toast.type === 'info',
+                'bg-[#ff9f0a]': toast.type === 'warn',
+                'bg-[#ff453a]': toast.type === 'error'
+              }"></span>
+        <span class="apple-title-primary tracking-tight">{{ toast.message }}</span>
+      </div>
+    </transition>
+
+    <!-- ==================== macOS Sidebar (Liquid Glass) ==================== -->
+    <aside class="w-64 apple-glass-sidebar flex flex-col h-full p-4 z-20 shrink-0 select-none overflow-hidden">
+      <!-- Scrollable Top Section (Nav & Header) -->
+      <div class="space-y-5 flex-1 min-h-0 overflow-y-auto pr-0.5">
+        
+        <!-- Sidebar Header & Logo -->
+        <div class="px-1 pt-1">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#0a84ff] to-[#00c7be] flex items-center justify-center shadow-lg shadow-[#0a84ff]/25 ring-1 ring-white/30">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold text-sm tracking-tight apple-title-primary">BiliNovel</span>
+                <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-[#0a84ff]/15 text-[#0a84ff] border border-[#0a84ff]/25">PRO</span>
+              </div>
+              <p class="text-[11px] apple-title-tertiary">轻小说制作引擎</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="space-y-1">
+          <button @click="activeTab = 'hub'"
+                  class="apple-nav-item"
+                  :class="{ 'active': activeTab === 'hub' }">
+            <div class="flex items-center gap-2.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span>解析工作台</span>
+            </div>
+            <span v-if="hub.book" class="w-1.5 h-1.5 rounded-full bg-[#0a84ff] shadow-sm shadow-[#0a84ff]"></span>
+          </button>
+
+          <button @click="activeTab = 'queue'"
+                  class="apple-nav-item"
+                  :class="{ 'active': activeTab === 'queue' }">
+            <div class="flex items-center gap-2.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>任务队列与监控</span>
+            </div>
+            <span v-if="queue.items.length > 0" 
+                  class="text-[10px] font-mono px-1.5 py-0.2 rounded-full font-semibold"
+                  :class="queue.isRunning ? 'bg-[#0a84ff]/15 text-[#0a84ff]' : 'apple-inset-box'">
+              {{ queue.items.length }}
+            </span>
+          </button>
+
+
+          <button @click="activeTab = 'settings'"
+                  class="apple-nav-item"
+                  :class="{ 'active': activeTab === 'settings' }">
+            <div class="flex items-center gap-2.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>偏好设置</span>
+            </div>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Bottom Theme Mode Toggle -->
+      <div class="pt-3 border-t border-black/5 dark:border-white/[0.08] shrink-0 mt-auto">
+        <button @click="toggleTheme" 
+                class="w-full flex items-center justify-between px-3 py-2 rounded-xl apple-inset-box hover:border-[#0a84ff]/30 text-xs transition apple-pressable group">
+          <div class="flex items-center gap-2.5">
+            <img v-if="theme === 'dark'" src="icons/moon.jpg" alt="Dark Mode" class="w-4 h-4 rounded-md object-cover shadow-sm group-hover:scale-110 transition-transform duration-200" />
+            <img v-else src="icons/sun.jpg" alt="Light Mode" class="w-4 h-4 rounded-full object-cover shadow-sm group-hover:scale-110 transition-transform duration-200" />
+            <span class="apple-title-secondary font-medium group-hover:text-[#0a84ff] transition-colors">{{ theme === 'dark' ? '暗色模式' : '亮色模式' }}</span>
+          </div>
+          <span class="text-[10px] apple-title-tertiary font-mono">切换</span>
+        </button>
+      </div>
+    </aside>
+
+
+    <!-- ==================== macOS Main Content Stage ==================== -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden apple-main-stage">
+      
+      <!-- Top Title Header -->
+      <header class="h-14 apple-glass-header flex items-center justify-between px-7 shrink-0 select-none">
+        <div class="flex items-center gap-2">
+          <h1 class="text-xs font-semibold uppercase tracking-wider apple-title-tertiary">
+            {{ activeTab === 'hub' ? '小说解析工作台' : 
+               activeTab === 'queue' ? '任务队列与多 Worker 监控' : '系统偏好设置' }}
+          </h1>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div v-if="activeTab === 'queue'" class="flex items-center gap-2">
+            <button v-if="!queue.isRunning" @click="startQueue" 
+                    class="btn-apple-primary flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold apple-pressable">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+              <span>启动队列流水线</span>
+            </button>
+            <button v-else @click="pauseQueue" 
+                    class="btn-apple-secondary flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#ff9f0a] border-[#ff9f0a]/30 apple-pressable">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"/></svg>
+              <span>暂停队列</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable Main View Area -->
+      <div class="flex-1 overflow-y-auto p-7 space-y-6">
+
+        <!-- ==================== VIEW 1: 小说解析工作台 (Hub) ==================== -->
+        <div v-if="activeTab === 'hub'" class="max-w-5xl mx-auto space-y-6 animate-fade-in">
+          
+          <!-- Input Card -->
+          <div class="apple-card p-5 rounded-2xl space-y-3">
+            <label class="block text-xs font-semibold apple-title-primary">小说链接或 ID</label>
+            <div class="flex items-center gap-3">
+              <div class="relative flex-1">
+                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none apple-title-tertiary">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </div>
+                <input type="text" v-model="hub.inputUrl" @keyup.enter="parseNovel()"
+                       placeholder="支持单卷URL、全本目录URL、小说主页链接或纯小说ID (如 3095)"
+                       class="w-full pl-10 pr-3.5 py-2.5 rounded-xl apple-input text-xs font-mono transition" />
+              </div>
+              
+              <button @click="parseNovel()" :disabled="hub.isParsing"
+                      class="btn-apple-primary px-5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-1.5 shrink-0 apple-pressable disabled:opacity-50">
+                <svg v-if="hub.isParsing" class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>{{ hub.isParsing ? '解析中...' : '智能解析' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Empty State Guide (未解析时展示优雅的引导说明) -->
+          <div v-if="!hub.book && !hub.isParsing" class="apple-card p-12 rounded-2xl flex flex-col items-center justify-center text-center space-y-4 animate-fade-in">
+            <div class="w-14 h-14 rounded-2xl bg-[#0a84ff]/10 flex items-center justify-center text-[#0a84ff] ring-1 ring-[#0a84ff]/20 shadow-sm">
+              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <div class="space-y-1 max-w-md">
+              <h3 class="text-sm font-semibold apple-title-primary">输入轻小说链接或 ID 开始</h3>
+              <p class="text-xs apple-title-tertiary leading-relaxed">支持输入哔哩轻小说单卷/目录页面 URL 或纯数字 ID，引擎将自动提取目录、卷列表与插图资源。</p>
+            </div>
+          </div>
+
+          <!-- Parsed Result Card -->
+          <div v-if="hub.book" class="space-y-6">
+
+            
+            <!-- Book Hero Card -->
+            <div class="apple-card p-6 rounded-2xl flex gap-6 relative overflow-hidden">
+              <div class="w-36 h-48 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 shrink-0 bg-slate-900 shadow-xl relative">
+                <img :src="hub.book.cover" :alt="hub.book.title" class="w-full h-full object-cover" referrerpolicy="no-referrer"
+                     onerror="this.style.opacity='0.3'" />
+                <div class="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded-md bg-black/80 backdrop-blur text-[9px] text-white font-mono">
+                  ID: {{ hub.book.novel_id }}
+                </div>
+              </div>
+
+              <div class="flex-1 flex flex-col justify-between">
+                <div class="space-y-2.5">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#30d158]/15 text-[#30d158] border border-[#30d158]/25">
+                      {{ hub.book.status }}
+                    </span>
+                    <span class="text-[11px] apple-title-secondary">{{ hub.book.category }}</span>
+                  </div>
+
+                  <h2 class="text-xl font-bold apple-title-primary tracking-tight">{{ hub.book.title }}</h2>
+
+                  <div class="flex items-center gap-5 text-xs apple-title-secondary">
+                    <div><span class="apple-title-tertiary">作者：</span><span class="apple-title-primary font-medium">{{ hub.book.author }}</span></div>
+                    <div><span class="apple-title-tertiary">插画：</span><span class="apple-title-primary font-medium">{{ hub.book.illustrator }}</span></div>
+                    <div><span class="apple-title-tertiary">总分卷：</span><span class="text-[#0a84ff] font-semibold">{{ hub.book.volumes.length }} 卷</span></div>
+                  </div>
+
+                  <div class="text-xs apple-title-secondary leading-relaxed max-h-36 overflow-y-auto select-text apple-inset-box p-3 rounded-xl whitespace-pre-line overscroll-contain">
+                    {{ hub.book.description }}
+                  </div>
+                </div>
+
+                <!-- Batch Controls -->
+                <div class="flex items-center justify-between pt-3 border-t border-black/5 dark:border-white/[0.08]">
+                  <div class="flex items-center gap-2">
+                    <button @click="selectAllVolumes" class="px-2.5 py-1 rounded-lg apple-chip-btn text-xs transition apple-pressable">全选</button>
+                    <button @click="invertVolumeSelect" class="px-2.5 py-1 rounded-lg apple-chip-btn text-xs transition apple-pressable">反选</button>
+                    <button @click="clearVolumeSelect" class="px-2.5 py-1 rounded-lg apple-chip-btn text-xs transition apple-pressable">清空</button>
+                    <span class="text-xs apple-title-tertiary ml-2">已选 <strong class="text-[#0a84ff]">{{ selectedVolumeCount }}</strong> / {{ hub.book.volumes.length }} 卷</span>
+                  </div>
+
+                  <div class="flex items-center gap-2.5">
+                    <button @click="addSelectedToQueue(false)" class="btn-apple-secondary px-4 py-2 rounded-xl text-xs font-medium apple-pressable">
+                      加入下载队列
+                    </button>
+                    <button @click="addSelectedToQueue(true)" class="btn-apple-primary px-5 py-2 rounded-xl text-xs font-semibold apple-pressable">
+                      立即开始下载
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Volume Grid with Stagger Animation -->
+            <div class="space-y-3">
+              <h3 class="text-xs font-semibold apple-title-tertiary uppercase tracking-wider">分卷选择列表</h3>
+              
+              <div class="grid grid-cols-3 gap-3">
+                <div v-for="vol in hub.book.volumes" :key="vol.id"
+                     @click="vol.selected = !vol.selected"
+                     class="apple-card apple-stagger-item p-4 rounded-xl cursor-pointer flex items-center justify-between select-none apple-pressable"
+                     :class="vol.selected ? 'border-[#0a84ff]/60 bg-[#0a84ff]/10' : ''">
+                  <div class="flex items-center gap-3">
+                    <input type="checkbox" v-model="vol.selected" @click.stop
+                           class="w-4 h-4 rounded text-[#0a84ff] apple-input focus:ring-[#0a84ff]" />
+                    <div>
+                      <h4 class="text-xs font-semibold apple-title-primary">{{ vol.title }}</h4>
+                      <p class="text-[11px] apple-title-tertiary mt-0.5">{{ vol.chapterCount }} 章节</p>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-mono"
+                        :class="vol.selected ? 'bg-[#0a84ff]/20 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-tertiary'">
+                    {{ vol.selected ? '已选择' : '待选' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ==================== VIEW 2: 任务队列与并发监控 (Queue) ==================== -->
+        <div v-if="activeTab === 'queue'" class="max-w-5xl mx-auto space-y-4 animate-fade-in">
+          
+          <!-- Hero Active Task Card -->
+          <div v-if="activeDownloadingTask" class="apple-card p-5 rounded-2xl border-[#0a84ff]/40 space-y-4">
+            <!-- Task Header -->
+            <div class="flex items-start justify-between">
+              <div class="flex items-center gap-3.5">
+                <div class="w-12 h-16 rounded-xl overflow-hidden border border-black/10 dark:border-white/[0.1] shrink-0 bg-slate-900 shadow-md">
+                  <img :src="activeDownloadingTask.cover" class="w-full h-full object-cover" referrerpolicy="no-referrer" />
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-[#0a84ff]/15 text-[#0a84ff] border border-[#0a84ff]/25 text-[10px] font-semibold">正在下载</span>
+                    <span class="text-[11px] apple-title-tertiary font-mono">3 个并发 Worker</span>
+                  </div>
+                  <h3 class="text-base font-bold apple-title-primary mt-0.5">《{{ activeDownloadingTask.novelTitle }}》 {{ activeDownloadingTask.volumeTitle }}</h3>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-5 text-right font-mono">
+                <div>
+                  <span class="text-[10px] apple-title-tertiary block">实时速率</span>
+                  <span class="text-xs font-semibold text-[#30d158]">{{ activeDownloadingTask.speed }}</span>
+                </div>
+                <div>
+                  <span class="text-[10px] apple-title-tertiary block">已用时间</span>
+                  <span class="text-xs font-medium apple-title-secondary">{{ activeDownloadingTask.elapsed }}</span>
+                </div>
+                <div>
+                  <span class="text-[10px] apple-title-tertiary block">预估剩余</span>
+                  <span class="text-xs font-medium text-[#0a84ff]">{{ activeDownloadingTask.eta }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Apple Progress Bar -->
+            <div class="space-y-1">
+              <div class="flex items-center justify-between text-[11px] font-mono">
+                <span class="apple-title-secondary">分卷下载进度 ({{ activeDownloadingTask.completedChapters }} / {{ activeDownloadingTask.totalChapters }} 章节)</span>
+                <span class="text-[#0a84ff] font-bold">{{ activeDownloadingTask.progress }}%</span>
+              </div>
+              <div class="w-full apple-progress-track">
+                <div class="apple-progress-fill"
+                     :style="{ width: `${activeDownloadingTask.progress}%` }"></div>
+              </div>
+            </div>
+
+            <!-- Worker Activity Cards -->
+            <div class="space-y-1.5 pt-0.5">
+              <span class="text-[10px] font-semibold apple-title-tertiary uppercase tracking-wider">并发 Worker Tab 实时状态</span>
+              <div class="grid grid-cols-3 gap-2.5">
+                <div v-for="worker in workers" :key="worker.id"
+                     class="p-2.5 rounded-xl border transition"
+                     :class="worker.status === 'active' ? 'apple-card border-[#0a84ff]/30' : 'apple-inset-box'">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-semibold apple-title-primary">{{ worker.name }}</span>
+                    <span class="text-[9px] px-1.5 py-0.2 rounded-full font-mono"
+                          :class="worker.status === 'active' ? 'bg-[#30d158]/15 text-[#30d158]' : 'apple-title-tertiary'">
+                      {{ worker.status === 'active' ? '● 抓取中' : '空闲' }}
+                    </span>
+                  </div>
+                  <p class="text-[11px] apple-title-secondary truncate font-mono">{{ worker.task }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Terminal -->
+            <div class="space-y-1.5 pt-1.5 border-t border-black/5 dark:border-white/[0.08]">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <button @click="terminal.collapsed = !terminal.collapsed"
+                          class="flex items-center gap-1.5 text-xs font-medium apple-title-secondary hover:text-[#0a84ff] transition apple-pressable">
+                    <svg class="w-3.5 h-3.5 transition-transform" :class="terminal.collapsed ? '-rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                    <span>控制台日志</span>
+                  </button>
+
+                  <div v-if="!terminal.collapsed" class="flex items-center gap-1 ml-2">
+                    <button @click="terminal.filter = 'all'" class="px-2 py-0.5 rounded-md text-[10px]" :class="terminal.filter === 'all' ? 'btn-apple-primary text-white' : 'apple-chip-btn'">全部</button>
+                    <button @click="terminal.filter = 'info'" class="px-2 py-0.5 rounded-md text-[10px]" :class="terminal.filter === 'info' ? 'btn-apple-primary text-white' : 'apple-chip-btn'">INFO</button>
+                    <button @click="terminal.filter = 'success'" class="px-2 py-0.5 rounded-md text-[10px]" :class="terminal.filter === 'success' ? 'bg-[#30d158] text-white' : 'apple-chip-btn'">SUCCESS</button>
+                    <button @click="terminal.filter = 'warn'" class="px-2 py-0.5 rounded-md text-[10px]" :class="terminal.filter === 'warn' ? 'bg-[#ff9f0a] text-white' : 'apple-chip-btn'">WARN</button>
+                  </div>
+                </div>
+
+                <div v-if="!terminal.collapsed" class="flex items-center gap-2">
+                  <button @click="copyLogs" class="apple-chip-btn text-xs px-2.5 py-0.5 rounded-lg transition apple-pressable">复制</button>
+                  <button @click="clearLogs" class="apple-chip-btn text-xs px-2.5 py-0.5 rounded-lg transition apple-pressable">清屏</button>
+                </div>
+              </div>
+
+              <div v-if="!terminal.collapsed" id="terminal-log-container"
+                   class="h-28 rounded-xl apple-terminal p-3 font-mono text-xs overflow-y-auto space-y-1 leading-relaxed">
+                <div v-for="log in filteredLogs" :key="log.id" class="flex items-start gap-2.5">
+                  <span class="text-[#6e6e73] shrink-0">{{ log.time }}</span>
+                  <span class="px-1.5 py-0.2 rounded text-[9px] uppercase shrink-0 font-semibold"
+                        :class="{
+                          'bg-[#0a84ff]/20 text-[#64d2ff] border border-[#0a84ff]/30': log.type === 'info',
+                          'bg-[#30d158]/20 text-[#30d158] border border-[#30d158]/30': log.type === 'success',
+                          'bg-[#ff9f0a]/20 text-[#ff9f0a] border border-[#ff9f0a]/30': log.type === 'warn',
+                          'bg-[#ff453a]/20 text-[#ff453a] border border-[#ff453a]/30': log.type === 'error'
+                        }">
+                    {{ log.tag || log.type }}
+                  </span>
+                  <span class="text-slate-200 break-all text-[11px]">{{ log.msg }}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+
+          <!-- Queue Segmented Control & List -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <h3 class="text-xs font-semibold apple-title-tertiary uppercase tracking-wider">队列任务 ({{ queue.items.length }})</h3>
+                
+                <!-- Apple Segmented Picker -->
+                <div class="apple-segmented-control">
+                  <button @click="queue.filter = 'all'" class="apple-segmented-item" :class="{ 'active': queue.filter === 'all' }">全部</button>
+                  <button @click="queue.filter = 'downloading'" class="apple-segmented-item" :class="{ 'active': queue.filter === 'downloading' }">下载中</button>
+                  <button @click="queue.filter = 'pending'" class="apple-segmented-item" :class="{ 'active': queue.filter === 'pending' }">排队中</button>
+                  <button @click="queue.filter = 'completed'" class="apple-segmented-item" :class="{ 'active': queue.filter === 'completed' }">已完成</button>
+                </div>
+              </div>
+
+              <button @click="clearCompleted" class="px-2.5 py-1 rounded-lg apple-chip-btn text-xs hover:text-[#ff453a] transition apple-pressable">清空已完成</button>
+            </div>
+
+            <!-- Task Items -->
+            <div class="space-y-2">
+              <div v-if="filteredQueueItems.length === 0" 
+                   class="apple-card p-10 rounded-xl flex flex-col items-center justify-center text-center space-y-2 animate-fade-in">
+                <p class="text-xs apple-title-secondary font-medium">当前队列中暂无任务</p>
+                <p class="text-[11px] apple-title-tertiary">前往「解析工作台」输入小说并勾选分卷即可加入队列</p>
+              </div>
+
+              <div v-for="(task, idx) in filteredQueueItems" :key="task.id"
+                   class="apple-card p-3.5 rounded-xl flex items-center justify-between transition">
+
+                
+                <div class="flex items-center gap-3.5 flex-1">
+                  <div class="flex flex-col gap-0.5 apple-title-tertiary">
+                    <button @click="moveTaskUp(idx)" class="hover:text-[#0a84ff] p-0.5 apple-pressable"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg></button>
+                    <button @click="moveTaskDown(idx)" class="hover:text-[#0a84ff] p-0.5 apple-pressable"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></button>
+                  </div>
+
+                  <div class="w-10 h-14 rounded-lg overflow-hidden border border-black/10 dark:border-white/[0.08] shrink-0 bg-slate-900 shadow">
+                    <img :src="task.cover" class="w-full h-full object-cover" referrerpolicy="no-referrer" />
+                  </div>
+
+                  <div class="flex-1 pr-6 space-y-1">
+                    <div class="flex items-center gap-2.5">
+                      <h4 class="text-xs font-bold apple-title-primary">《{{ task.novelTitle }}》 {{ task.volumeTitle }}</h4>
+                      <span class="text-[9px] px-2 py-0.2 rounded-full font-mono font-semibold"
+                            :class="{
+                              'bg-[#0a84ff]/15 text-[#0a84ff]': task.status === 'downloading',
+                              'apple-inset-box apple-title-tertiary': task.status === 'pending',
+                              'bg-[#30d158]/15 text-[#30d158]': task.status === 'completed',
+                              'bg-[#ff9f0a]/15 text-[#ff9f0a]': task.status === 'paused',
+                              'bg-[#ff453a]/15 text-[#ff453a]': task.status === 'error',
+                            }">
+                        {{ task.status === 'downloading' ? '正在下载' : task.status === 'pending' ? '排队中' : task.status === 'completed' ? '已完成' : '已暂停' }}
+                      </span>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                      <div class="flex-1 h-1.5 rounded-full apple-progress-track">
+                        <div class="h-full rounded-full transition-all duration-350"
+                             :class="task.status === 'completed' ? 'bg-[#30d158]' : 'bg-[#0a84ff]'"
+                             :style="{ width: `${task.progress}%` }"></div>
+                      </div>
+                      <span class="text-[11px] font-mono apple-title-tertiary">{{ task.completedChapters }}/{{ task.totalChapters }} ({{ task.progress }}%)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <button v-if="task.status === 'error' || task.status === 'paused'" @click="retryTask(task)"
+                          class="px-2.5 py-1 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff] text-[#0a84ff] hover:text-white text-xs font-medium transition apple-pressable">重试</button>
+                  <button @click="removeTask(task.id)"
+                          class="p-1.5 rounded-lg hover:bg-[#ff453a]/15 apple-title-tertiary hover:text-[#ff453a] transition apple-pressable">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ==================== VIEW 3: 偏好设置中心 (Settings with Apple iOS Switches) ==================== -->
+        <div v-if="activeTab === 'settings'" class="max-w-3xl mx-auto space-y-5 animate-fade-in pb-12">
+          
+          <!-- 存储设置 -->
+          <div class="apple-card p-5 rounded-2xl space-y-4">
+            <h3 class="text-xs font-semibold apple-title-primary flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#0a84ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+              <span>存储与输出路径</span>
+            </h3>
+
+            <div class="space-y-3 pt-1">
+              <div>
+                <label class="block text-[11px] apple-title-tertiary mb-1">分卷保存目录</label>
+                <div class="flex items-center gap-2.5">
+                  <input type="text" v-model="settings.downloadDir" class="flex-1 px-3.5 py-2 rounded-xl apple-input font-mono text-xs" />
+                  <button @click="chooseFolder" class="btn-apple-secondary px-4 py-2 rounded-xl text-xs apple-pressable">浏览</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1">
+                <div class="flex items-center justify-between p-3.5 rounded-xl apple-inset-box">
+                  <div class="space-y-0.5 pr-2">
+                    <span class="block text-xs font-medium apple-title-primary">完成后自动定位文件夹</span>
+                    <span class="block text-[10px] apple-title-tertiary leading-tight">分卷全部下载完成后，自动打开对应保存目录</span>
+                  </div>
+                  <label class="apple-switch shrink-0">
+                    <input type="checkbox" v-model="settings.autoOpenFolder">
+                    <span class="apple-switch-slider"></span>
+                  </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5 rounded-xl apple-inset-box">
+                  <div class="space-y-0.5 pr-2">
+                    <span class="block text-xs font-medium apple-title-primary">自动清理抓取临时缓存</span>
+                    <span class="block text-[10px] apple-title-tertiary leading-tight">EPUB 打包成功后，自动清除分卷目录下的「插图」文件夹及独立封面图</span>
+                  </div>
+                  <label class="apple-switch shrink-0">
+                    <input type="checkbox" v-model="settings.cleanupTemp">
+                    <span class="apple-switch-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 爬虫引擎设置 -->
+          <div class="apple-card p-5 rounded-2xl space-y-4">
+            <h3 class="text-xs font-semibold apple-title-primary flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#0a84ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <span>爬虫核心与反爬配置</span>
+            </h3>
+
+            <div class="space-y-3 pt-1">
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="apple-title-secondary">并发 Worker (Tab) 数量</span>
+                  <span class="text-[#0a84ff] font-mono font-semibold">{{ settings.concurrencyTabs }} 个 Tab</span>
+                </div>
+                <input type="range" min="1" max="6" v-model.number="settings.concurrencyTabs" class="w-full accent-[#0a84ff] cursor-pointer" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1">
+                <div class="flex items-center justify-between p-3.5 rounded-xl apple-inset-box">
+                  <div class="pr-2">
+                    <span class="text-xs apple-title-primary block font-medium">无头浏览器模式 (Headless)</span>
+                    <span class="text-[10px] apple-title-tertiary leading-normal block mt-0.5">推荐开启：后台静默抓取且不弹窗打扰；关闭可显示浏览器实时加载画面</span>
+                  </div>
+                  <label class="apple-switch flex-shrink-0">
+                    <input type="checkbox" v-model="settings.headless">
+                    <span class="apple-switch-slider"></span>
+                  </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3.5 rounded-xl apple-inset-box">
+                  <div>
+                    <span class="text-xs apple-title-primary block">失效章节正反向自愈</span>
+                    <span class="text-[10px] apple-title-tertiary">自动修复 javascript:cid</span>
+                  </div>
+                  <label class="apple-switch">
+                    <input type="checkbox" checked disabled>
+                    <span class="apple-switch-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- 界面字体 -->
+          <div class="apple-card p-5 rounded-2xl space-y-4">
+            <h3 class="text-xs font-semibold apple-title-primary flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#0a84ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 5v14m6-8h6m-3-4v8"/></svg>
+              <span>全局界面字体族</span>
+            </h3>
+
+            <div class="space-y-4 pt-1">
+              <!-- 字体族预设 -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="apple-title-secondary">字体预设选择</span>
+                  <span class="text-[#0a84ff] font-mono font-medium text-[11px]">{{ settings.fontPreset === 'custom' ? (settings.customFont || '自定义输入') : settings.fontPreset }}</span>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-2">
+                  <button @click="settings.fontPreset = 'system'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable"
+                          :class="settings.fontPreset === 'system' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">系统默认</span>
+                    <span class="block text-[10px] opacity-60">Segoe UI / 微软雅黑 UI</span>
+                  </button>
+
+                  <button @click="settings.fontPreset = 'yahei'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable font-['Microsoft_YaHei']"
+                          :class="settings.fontPreset === 'yahei' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">微软雅黑</span>
+                    <span class="block text-[10px] opacity-60">Microsoft YaHei UI</span>
+                  </button>
+
+                  <button @click="settings.fontPreset = 'pingfang'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable"
+                          :class="settings.fontPreset === 'pingfang' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">苹方黑体</span>
+                    <span class="block text-[10px] opacity-60">PingFang SC / Hiragino</span>
+                  </button>
+
+                  <button @click="settings.fontPreset = 'noto_sans'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable"
+                          :class="settings.fontPreset === 'noto_sans' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">思源黑体</span>
+                    <span class="block text-[10px] opacity-60">Source Han Sans</span>
+                  </button>
+
+                  <button @click="settings.fontPreset = 'noto_serif'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable font-serif"
+                          :class="settings.fontPreset === 'noto_serif' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">思源宋体 (出版风)</span>
+                    <span class="block text-[10px] opacity-60">日轻正文排版宋体</span>
+                  </button>
+
+                  <button @click="settings.fontPreset = 'custom'" 
+                          class="p-2.5 rounded-xl border text-xs text-left transition apple-pressable"
+                          :class="settings.fontPreset === 'custom' ? 'border-[#0a84ff] bg-[#0a84ff]/10 text-[#0a84ff] font-semibold' : 'apple-inset-box apple-title-secondary'">
+                    <span class="block text-xs font-medium">自定义输入</span>
+                    <span class="block text-[10px] opacity-60">输入本地安装字体名</span>
+                  </button>
+                </div>
+
+                <!-- 自定义输入框 -->
+                <div v-if="settings.fontPreset === 'custom'" class="pt-1.5 animate-fade-in">
+                  <input type="text" v-model="settings.customFont" 
+                         placeholder="输入本地已安装字体名称（如：霞鹜文楷, Fira Code, 仿宋, Consolas, 楷体）"
+                         class="w-full px-3.5 py-2 rounded-xl apple-input text-xs" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- Bottom Sticky Floating Save Bar -->
+          <div class="sticky bottom-0 py-3.5 px-4 rounded-2xl apple-glass-header border border-black/10 dark:border-white/[0.1] flex items-center justify-between z-30 shadow-lg mt-6">
+            <span class="text-[11px] apple-title-tertiary">偏好设置将即时保存生效</span>
+            <div class="flex items-center gap-2.5">
+              <button @click="resetSettings" class="btn-apple-secondary px-4 py-2 rounded-xl text-xs apple-pressable">恢复默认</button>
+              <button @click="saveSettings" class="btn-apple-primary px-6 py-2 rounded-xl text-xs font-semibold apple-pressable">保存配置</button>
+            </div>
+          </div>
+
+        </div>
+
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- App Script -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+name: Build and Release Windows Client
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller build_exe.spec --noconfirm
+
+      - name: Inject Folder Icon and Create Portable Zip
+        run: |
+          Copy-Item "gui\app_icon.ico" "dist\BiliNovelStudio\app_icon.ico" -Force
+          $ini = "[.ShellClassInfo]`r`nIconResource=app_icon.ico,0`r`n[ViewState]`r`nMode=`r`nVid=`r`nFolderType=Generic`r`n"
+          [System.IO.File]::WriteAllText("dist\BiliNovelStudio\desktop.ini", $ini, [System.Text.Encoding]::Default)
+          attrib +h "dist\BiliNovelStudio\app_icon.ico"
+          attrib +h +s "dist\BiliNovelStudio\desktop.ini"
+          attrib +r "dist\BiliNovelStudio"
+          Compress-Archive -Path "dist\BiliNovelStudio" -DestinationPath "dist\BiliNovelStudio_Portable.zip" -Force
+
+      - name: Install Inno Setup
+        run: |
+          choco install innosetup --no-progress
+
+      - name: Build Inno Setup Installer
+        run: |
+          iscc installer.iss /Q
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/BiliNovelStudio_Portable.zip
+            dist/BiliNovelStudio_Setup_*.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true

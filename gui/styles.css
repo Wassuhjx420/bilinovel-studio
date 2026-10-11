@@ -1,0 +1,470 @@
+/* ==========================================================================
+   BiliNovel Studio - Apple Design System (macOS Sequoia & iOS 18 Dual Theme)
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root, [data-theme="light"] {
+  /* ==================== LIGHT THEME (Default) ==================== */
+  --apple-bg-base: #f0f2f5;
+  --apple-bg-sidebar: rgba(246, 248, 251, 0.92);
+  --apple-bg-header: rgba(246, 248, 251, 0.85);
+  --apple-bg-surface: rgba(255, 255, 255, 0.92);
+  --apple-bg-surface-elevated: #ffffff;
+  --apple-bg-surface-hover: #ffffff;
+  --apple-bg-input: rgba(0, 0, 0, 0.04);
+  --apple-bg-inset: rgba(0, 0, 0, 0.03);
+  --apple-bg-chip: rgba(0, 0, 0, 0.05);
+  --apple-bg-chip-hover: rgba(10, 132, 255, 0.12);
+
+  /* Light Borders & Soft Shadows */
+  --apple-border-hairline: rgba(0, 0, 0, 0.08);
+  --apple-border-hover: rgba(0, 0, 0, 0.16);
+  --apple-light-catcher: inset 0 1px 0 0 rgba(255, 255, 255, 1);
+  --apple-shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  --apple-shadow-hover: 0 12px 30px -4px rgba(0, 0, 0, 0.09), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+
+  /* Light Typography (Enhanced High-Contrast & Legibility) */
+  --apple-text-primary: #111827;
+  --apple-text-secondary: #374151;
+  --apple-text-tertiary: #4b5563;
+  --apple-text-quaternary: #6b7280;
+
+  /* Light Accent & Function Colors */
+  --apple-accent: #0071e3;
+  --apple-accent-gradient: linear-gradient(135deg, #0071e3 0%, #00a39b 100%);
+  --apple-accent-glow: 0 0 20px rgba(0, 113, 227, 0.22);
+  --apple-green: #248a3d;
+  --apple-orange: #c96d00;
+  --apple-red: #d70015;
+  --apple-cyan: #0071e3;
+
+  /* Spring Physics & Motion Easing */
+  --ease-apple-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-apple-snap: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* Dynamic Typography & Scaling */
+  --app-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --app-font-scale: 1;
+}
+
+[data-theme="dark"] {
+  /* ==================== DARK THEME ==================== */
+  --apple-bg-base: #07090e;
+  --apple-bg-sidebar: rgba(13, 17, 26, 0.88);
+  --apple-bg-header: rgba(13, 17, 26, 0.75);
+  --apple-bg-surface: rgba(20, 26, 40, 0.65);
+  --apple-bg-surface-elevated: rgba(28, 36, 56, 0.75);
+  --apple-bg-surface-hover: rgba(36, 46, 70, 0.85);
+  --apple-bg-input: rgba(0, 0, 0, 0.45);
+  --apple-bg-inset: rgba(0, 0, 0, 0.35);
+  --apple-bg-chip: rgba(255, 255, 255, 0.05);
+  --apple-bg-chip-hover: rgba(10, 132, 255, 0.2);
+
+  /* Borders & Shadows */
+  --apple-border-hairline: rgba(255, 255, 255, 0.09);
+  --apple-border-hover: rgba(255, 255, 255, 0.18);
+  --apple-light-catcher: inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  --apple-shadow-card: 0 12px 36px -4px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+  --apple-shadow-hover: 0 20px 48px -6px rgba(0, 0, 0, 0.65), 0 6px 16px -2px rgba(0, 0, 0, 0.45);
+
+  /* Typography & Vibrancy */
+  --apple-text-primary: #f9fafb;
+  --apple-text-secondary: #d1d5db;
+  --apple-text-tertiary: #9ca3af;
+  --apple-text-quaternary: #6b7280;
+
+  /* Accent & Function Colors */
+  --apple-accent: #0a84ff;
+  --apple-accent-gradient: linear-gradient(135deg, #0a84ff 0%, #00c7be 100%);
+  --apple-accent-glow: 0 0 24px rgba(10, 132, 255, 0.32);
+  --apple-green: #30d158;
+  --apple-orange: #ff9f0a;
+  --apple-red: #ff453a;
+  --apple-cyan: #64d2ff;
+}
+
+/* ==================== Base Reset & Layout ==================== */
+html {
+  font-size: 18.2px; /* 固定 130% 舒适阅读字号基准 (14px * 1.3) */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--app-font-family);
+  background-color: var(--apple-bg-base);
+  color: var(--apple-text-primary);
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+code, pre, .font-mono {
+  font-family: "Cascadia Code", "Consolas", "SF Mono", "JetBrains Mono", Menlo, Monaco, monospace;
+}
+
+/* ==================== Apple Liquid Glass Materials ==================== */
+.apple-glass-sidebar {
+  background: var(--apple-bg-sidebar);
+  backdrop-filter: blur(32px) saturate(210%);
+  -webkit-backdrop-filter: blur(32px) saturate(210%);
+  border-right: 1px solid var(--apple-border-hairline);
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.apple-glass-header {
+  background: var(--apple-bg-header);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border-bottom: 1px solid var(--apple-border-hairline);
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.apple-main-stage {
+  background-color: var(--apple-bg-base);
+  transition: background-color 200ms ease;
+}
+
+.apple-card {
+  background: var(--apple-bg-surface);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--apple-border-hairline);
+  box-shadow: var(--apple-light-catcher), var(--apple-shadow-card);
+  border-radius: 16px;
+  color: var(--apple-text-primary);
+  transition: transform 180ms var(--ease-apple-spring), 
+              background-color 200ms ease, 
+              border-color 200ms ease, 
+              box-shadow 180ms var(--ease-apple-spring),
+              color 200ms ease;
+}
+
+.apple-card:hover {
+  background: var(--apple-bg-surface-hover);
+  border-color: var(--apple-border-hover);
+  box-shadow: var(--apple-light-catcher), var(--apple-shadow-hover);
+}
+
+/* ==================== Input Fields & Containers ==================== */
+.apple-input {
+  background: var(--apple-bg-input);
+  border: 1px solid var(--apple-border-hairline);
+  color: var(--apple-text-primary);
+  border-radius: 12px;
+  transition: all 160ms ease;
+}
+
+.apple-input::placeholder {
+  color: var(--apple-text-tertiary);
+}
+
+.apple-input:focus {
+  outline: none;
+  border-color: var(--apple-accent);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+}
+
+.apple-inset-box {
+  background: var(--apple-bg-inset);
+  border: 1px solid var(--apple-border-hairline);
+  border-radius: 12px;
+  color: var(--apple-text-secondary);
+}
+
+.apple-chip-btn {
+  background: var(--apple-bg-chip);
+  border: 1px solid var(--apple-border-hairline);
+  color: var(--apple-text-secondary);
+  border-radius: 8px;
+  transition: all 140ms ease;
+}
+
+.apple-chip-btn:hover {
+  background: var(--apple-bg-chip-hover);
+  color: var(--apple-accent);
+  border-color: var(--apple-accent);
+}
+
+/* ==================== Typography Tokens ==================== */
+.apple-title-primary {
+  color: var(--apple-text-primary);
+}
+
+.apple-title-secondary {
+  color: var(--apple-text-secondary);
+}
+
+.apple-title-tertiary {
+  color: var(--apple-text-tertiary);
+  font-weight: 500;
+}
+
+/* ==================== Apple Spring Interactive Elements ==================== */
+.apple-pressable {
+  transition: transform 120ms var(--ease-apple-spring), opacity 120ms ease;
+}
+
+.apple-pressable:active {
+  transform: scale(0.972);
+}
+
+.btn-apple-primary {
+  background: var(--apple-accent-gradient);
+  color: #ffffff !important;
+  border-radius: 12px;
+  font-weight: 600;
+  box-shadow: var(--apple-light-catcher), var(--apple-accent-glow);
+  transition: transform 120ms var(--ease-apple-spring), filter 150ms ease, box-shadow 150ms ease;
+  border: none;
+}
+
+.btn-apple-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: var(--apple-light-catcher), 0 0 28px rgba(10, 132, 255, 0.45);
+}
+
+.btn-apple-primary:active {
+  transform: scale(0.965);
+  filter: brightness(0.95);
+}
+
+.btn-apple-secondary {
+  background: var(--apple-bg-surface-elevated);
+  color: var(--apple-text-primary);
+  border: 1px solid var(--apple-border-hairline);
+  box-shadow: var(--apple-light-catcher);
+  border-radius: 12px;
+  font-weight: 500;
+  transition: transform 120ms var(--ease-apple-spring), background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btn-apple-secondary:hover {
+  background: var(--apple-bg-surface-hover);
+  border-color: var(--apple-border-hover);
+}
+
+.btn-apple-secondary:active {
+  transform: scale(0.968);
+}
+
+/* ==================== macOS Traffic Lights ==================== */
+.traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.traffic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  position: relative;
+}
+
+.traffic-light-close { background: #ff5f56; border: 1px solid #e0443e; }
+.traffic-light-min { background: #ffbd2e; border: 1px solid #dea123; }
+.traffic-light-zoom { background: #27c93f; border: 1px solid #1aab29; }
+
+/* ==================== Apple Segmented Control ==================== */
+.apple-segmented-control {
+  background: var(--apple-bg-input);
+  border: 1px solid var(--apple-border-hairline);
+  padding: 3px;
+  border-radius: 10px;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.apple-segmented-item {
+  padding: 4px 12px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  transition: all 150ms var(--ease-apple-spring);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+}
+
+.apple-segmented-item.active {
+  background: var(--apple-bg-surface-elevated);
+  color: var(--apple-text-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), var(--apple-light-catcher);
+  font-weight: 600;
+}
+
+.apple-segmented-item:hover:not(.active) {
+  color: var(--apple-text-primary);
+}
+
+/* ==================== Apple Navigation Pills ==================== */
+.apple-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  transition: all 140ms var(--ease-apple-spring);
+  border: 1px solid transparent;
+  width: 100%;
+}
+
+.apple-nav-item:hover {
+  background: var(--apple-bg-chip);
+  color: var(--apple-text-primary);
+}
+
+.apple-nav-item:active {
+  transform: scale(0.98);
+}
+
+.apple-nav-item.active {
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--apple-accent);
+  border: 1px solid rgba(10, 132, 255, 0.25);
+  font-weight: 600;
+  box-shadow: inset 0 0 12px rgba(10, 132, 255, 0.08);
+}
+
+/* ==================== Apple Progress Bar ==================== */
+.apple-progress-track {
+  background: var(--apple-bg-input);
+  border: 1px solid var(--apple-border-hairline);
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.apple-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--apple-accent-gradient);
+  box-shadow: 0 0 14px rgba(10, 132, 255, 0.35);
+  transition: width 350ms var(--ease-apple-spring);
+}
+
+/* ==================== Apple iOS Switch Toggle ==================== */
+.apple-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+}
+
+.apple-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.apple-switch-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: rgba(120, 120, 128, 0.28);
+  transition: background-color 220ms var(--ease-apple-spring);
+  border-radius: 24px;
+  border: 1px solid var(--apple-border-hairline);
+}
+
+.apple-switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: #ffffff;
+  transition: transform 220ms var(--ease-apple-spring), box-shadow 220ms ease;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.apple-switch input:checked + .apple-switch-slider {
+  background-color: var(--apple-green);
+  border-color: rgba(48, 209, 88, 0.4);
+}
+
+.apple-switch input:checked + .apple-switch-slider:before {
+  transform: translateX(18px);
+}
+
+/* ==================== Staggered Reveal Animation ==================== */
+@keyframes appleSpringEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.apple-stagger-item {
+  animation: appleSpringEnter 320ms var(--ease-apple-spring) forwards;
+  opacity: 0;
+}
+
+.apple-stagger-item:nth-child(1) { animation-delay: 20ms; }
+.apple-stagger-item:nth-child(2) { animation-delay: 50ms; }
+.apple-stagger-item:nth-child(3) { animation-delay: 80ms; }
+.apple-stagger-item:nth-child(4) { animation-delay: 110ms; }
+.apple-stagger-item:nth-child(5) { animation-delay: 140ms; }
+.apple-stagger-item:nth-child(6) { animation-delay: 170ms; }
+.apple-stagger-item:nth-child(7) { animation-delay: 200ms; }
+.apple-stagger-item:nth-child(8) { animation-delay: 230ms; }
+.apple-stagger-item:nth-child(9) { animation-delay: 260ms; }
+
+/* ==================== Sonner-Style Stacked Toast ==================== */
+.sonner-toast {
+  background: var(--apple-bg-surface-elevated);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid var(--apple-border-hairline);
+  box-shadow: var(--apple-light-catcher), var(--apple-shadow-card);
+  border-radius: 14px;
+}
+
+/* ==================== Apple Terminal Styling ==================== */
+.apple-terminal {
+  background: #080b11;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.7);
+  border-radius: 12px;
+  color: #f1f5f9;
+}
+
+/* ==================== Scrollbar & Transitions ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(142, 142, 147, 0.25);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 142, 147, 0.45);
+}
