@@ -156,14 +156,14 @@ bilinovel-studio/
 │   ├── index.html
 │   ├── app.js
 │   ├── styles.css
-│   └── app_icon.ico       # Windows 原生高保真品牌图标
+│   └── app_icon.ico       # Windows 应用图标
 ├── docs/images/           # 官方文档预览截图
-├── installer.iss          # Inno Setup 现代化极简中文安装向导编译规格
+├── installer.iss          # Inno Setup 安装向导
 ├── ChineseSimplified.isl  # Inno Setup 简体中文语言包
 ├── build_exe.spec         # PyInstaller 绿色打包规格文件
 ├── build_release.bat      # 自动化一键打包脚本
 ├── requirements.txt       # 依赖清单
-└── novels/                # 产出电子书专属目录 (与核心代码解耦隔离)
+└── novels/                # 产出目录 (与核心代码解耦隔离)
 ```
 
 ---
