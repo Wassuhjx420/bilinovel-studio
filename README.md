@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Browser-Microsoft%20Edge-0078D7.svg?style=flat-square&logo=microsoftedge&logoColor=white)](https://www.microsoft.com/edge)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.0.0-orange.svg?style=flat-square)](https://github.com)
+[![Release](https://img.shields.io/badge/Release-v1.2.0-orange.svg?style=flat-square)](https://github.com)
 
 </div>
 
@@ -65,6 +65,9 @@
   * 支持 Cloudflare Turnstile 验证框坐标探测与会话持久化保护。
 * **失效章节正反向递归自愈修复**
   * 面对版权下架或残缺目录中遗留的占位链接，算法自动向前/向后提取临近有效章节并双向推导，消灭漏章。
+* **繁简自动转换（默认开启，可按需开关）**
+  * 内置轻小说专用繁转简引擎，抓取与封装 EPUB 时自动将繁体书名、分卷目录与正文转为规范简体中文；
+  * 修正台湾正体常见异体用字与上下文「著/着」转换，严格保留原翻译用词、标点符号与排版结构；支持在客户端界面或命令行通过 `--no-simplified` 关闭以保留原文。
 * **Calibre & Kavita 媒体库系列元数据集成**
   * 自动从分卷标题提取卷号与系列名，写入 `calibre:series`、`calibre:series_index` 与 EPUB 3 `belongs-to-collection` 标签，导入媒体库即可自动分卷归类。
 
@@ -78,7 +81,7 @@
 
 | 版本类型 | 文件名 | 说明 |
 | :--- | :--- | :--- |
-| **安装版** | `BiliNovelStudio_Setup_v1.0.0.exe` | 两步安装向导 |
+| **安装版** | `BiliNovelStudio_Setup_v1.2.0.exe` | 两步安装向导 |
 | **绿色免安装便携版** | `BiliNovelStudio_Portable.zip` | 解压至任意文件夹即可直接运行 |
 
 > **系统要求**：Windows 10 / Windows 11（系统自带 Microsoft Edge 浏览器即可，无需额外下载配置内核）。
@@ -115,13 +118,13 @@ start_gui.bat
 ### 4. 命令行 (CLI) 快速用法
 如果你习惯使用无图形界面的命令行：
 ```bash
-# 爬取单卷直达链接 (自动识别小说 ID 与分卷 ID)
+# 爬取单卷直达链接 (默认开启繁转简；如需保留繁体可追加 --no-simplified)
 python scrape_linovelib.py "https://www.linovelib.com/novel/3095/vol_328281.html"
 
 # 爬取目录页并指定分卷序号 (如第 1 卷)
 python scrape_linovelib.py https://www.linovelib.com/novel/5131/catalog 1
 
-# 从已有分卷抓取目录重新打包出 EPUB
+# 从已有分卷抓取目录重新打包出 EPUB (默认开启繁转简；追加 --no-simplified 可保留原文)
 python to_epub.py novels/败北女角太多了！/第1卷 "败北女角太多了！" "第1卷" "雨森焚火"
 ```
 
@@ -138,7 +141,7 @@ build_release.bat
 执行后将在 `dist/` 目录下生成：
 * `dist/BiliNovelStudio/`：免安装绿色运行时目录（已内嵌专属文件夹图标）；
 * `dist/BiliNovelStudio_Portable.zip`：便携发布压缩包；
-* `dist/BiliNovelStudio_Setup_v1.1.0.exe`：全中文两步极简安装向导。
+* `dist/BiliNovelStudio_Setup_v1.2.0.exe`：全中文两步极简安装向导。
 
 ---
 
@@ -151,6 +154,7 @@ bilinovel-studio/
 ├── runtime_env.py         # 运行时环境感知 (只读静态资源与持久化存储隔离)
 ├── scrape_linovelib.py    # 核心爬虫与异步并发抓取流水线
 ├── to_epub.py             # EPUB 转换与精排打包引擎
+├── text_converter.py      # 轻小说繁简转换引擎（繁转简与无损 EPUB 文本节点转换）
 ├── rubbish_secret_map.py  # 站点字体反混淆字典
 ├── gui/                   # Vue 3 现代化前端交互界面
 │   ├── index.html
