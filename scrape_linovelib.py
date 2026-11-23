@@ -29,6 +29,7 @@ from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from to_epub import generate_epub
 from runtime_env import get_storage_dir
+from text_converter import convert_to_simplified as _convert_tc_to_sc, is_converter_available
 
 try:
     from rubbish_secret_map import rubbish_secret_map
@@ -863,6 +864,7 @@ async def scrape_volume_async(
     headless=False,
     chapters_list=None,
     cleanup_temp=False,
+    convert_to_simplified=True,
     on_progress=None,
     on_worker=None,
     on_log=None
@@ -1001,6 +1003,18 @@ async def scrape_volume_async(
 
         # 执行失效/缺失章节链接正反向自愈修复
         chapters = await repair_volume_chapters(main_page, chapters)
+
+        # 繁简转换状态校验与标题预处理
+        use_simplified = bool(convert_to_simplified)
+        if use_simplified:
+            if is_converter_available():
+                novel_title = _convert_tc_to_sc(novel_title)
+                vol_name = _convert_tc_to_sc(vol_name)
+                author = _convert_tc_to_sc(author)
+                _log("info", "CONVERT", "繁简转换已开启：抓取完成后将自动转换书名、目录与正文为规范简体中文")
+            else:
+                use_simplified = False
+                _log("warn", "CONVERT", "未安装 opencc-python-reimplemented，已跳过繁简转换（保留原文）")
 
         # 3. 初始化保存目录
         safe_novel_name = re.sub(r'[\\/:*?"<>|]', "_", novel_title)
@@ -1152,6 +1166,9 @@ async def scrape_volume_async(
             else:
                 ch_title, items = chapter_raw_results[idx]
 
+            if use_simplified:
+                ch_title = _convert_tc_to_sc(ch_title)
+
             ch_paragraphs = []
             ch_img_count = 0
             safe_ch_title = re.sub(r'[\\/:*?"<>|]', "_", ch_title)
@@ -1160,6 +1177,8 @@ async def scrape_volume_async(
                 itype = item["type"]
                 if itype == "text":
                     decrypted_text = decrypt_font_text(item["text"])
+                    if use_simplified:
+                        decrypted_text = _convert_tc_to_sc(decrypted_text)
                     ch_paragraphs.append(decrypted_text)
                 elif itype == "scene_break":
                     symbol = item.get("symbol", "").strip()
@@ -1296,7 +1315,8 @@ async def scrape_volume_async(
         volume_title=safe_vol_name,
         author=author,
         output_file=out_epub,
-        chapters_data=structured_chapters
+        chapters_data=structured_chapters,
+        convert_to_simplified=False
     )
 
 
@@ -1318,17 +1338,40 @@ async def scrape_volume_async(
 
 
 
-def scrape_volume(novel_input, target_vol_param=None, custom_novel_name=None):
+def scrape_volume(novel_input, target_vol_param=None, custom_novel_name=None, convert_to_simplified=True):
     """同步入口封装"""
-    return asyncio.run(scrape_volume_async(novel_input, target_vol_param, custom_novel_name))
+    return asyncio.run(
+        scrape_volume_async(
+            novel_input,
+            target_vol_param,
+            custom_novel_name,
+            convert_to_simplified=convert_to_simplified,
+        )
+    )
 
 
 def main():
-    novel_url = sys.argv[1] if len(sys.argv) >= 2 else "https://www.linovelib.com/novel/3768/vol_308156.html"
-    target_vol = sys.argv[2] if len(sys.argv) >= 3 else None
-    custom_name = sys.argv[3] if len(sys.argv) >= 4 else None
+    raw_args = sys.argv[1:]
+    convert_to_simplified = True
+    pos_args = []
+    for arg in raw_args:
+        if arg in ("--no-simplified", "--keep-traditional"):
+            convert_to_simplified = False
+        elif arg == "--simplified":
+            convert_to_simplified = True
+        else:
+            pos_args.append(arg)
 
-    scrape_volume(novel_url, target_vol_param=target_vol, custom_novel_name=custom_name)
+    novel_url = pos_args[0] if len(pos_args) >= 1 else "https://www.linovelib.com/novel/3768/vol_308156.html"
+    target_vol = pos_args[1] if len(pos_args) >= 2 else None
+    custom_name = pos_args[2] if len(pos_args) >= 3 else None
+
+    scrape_volume(
+        novel_url,
+        target_vol_param=target_vol,
+        custom_novel_name=custom_name,
+        convert_to_simplified=convert_to_simplified,
+    )
 
 
 if __name__ == "__main__":

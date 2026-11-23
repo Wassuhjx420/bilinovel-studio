@@ -171,7 +171,8 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
             title = body.get("title", "轻小说")
             vol_name = body.get("volume", "第1卷")
             author = body.get("author", "佚名")
-            res = gui_service.build_epub_manually(vol_dir, title, vol_name, author)
+            conv_sc = bool(body.get("convertToSimplified", True))
+            res = gui_service.build_epub_manually(vol_dir, title, vol_name, author, convert_to_simplified=conv_sc)
             self._send_json(res)
             return
 
@@ -210,6 +211,11 @@ def check_environment():
         print("     pip install -r requirements.txt")
         print("!" * 64 + "\n")
         sys.exit(1)
+
+    try:
+        import opencc
+    except ImportError:
+        print("[!] 提示：未检测到 opencc-python-reimplemented，繁简转换功能将自动跳过。可执行 pip install -r requirements.txt 安装。")
 
 
 def main():

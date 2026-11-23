@@ -288,6 +288,8 @@ const app = createApp({
           downloadDir: settings.downloadDir,
           concurrencyTabs: settings.concurrencyTabs,
           headless: settings.headless,
+          cleanupTemp: settings.cleanupTemp,
+          convertToSimplified: settings.convertToSimplified,
           autoOpenFolder: settings.autoOpenFolder,
           calibreMeta: true,
           kavitaMeta: true,
@@ -324,6 +326,7 @@ const app = createApp({
       autoOpenFolder: true,
       autoOpenEpub: false,
       cleanupTemp: true,
+      convertToSimplified: true,
       concurrencyTabs: 3,
       headless: true,
       maxRetries: 3,
@@ -352,6 +355,12 @@ const app = createApp({
       applyTypography();
     });
 
+    watch(() => settings.convertToSimplified, () => {
+      try {
+        localStorage.setItem('bilinovel_settings', JSON.stringify(settings));
+      } catch (e) {}
+    });
+
     const syncDefaultSettings = async () => {
       try {
         const res = await callApi('get_defaults', 'GET:/api/defaults');
@@ -377,9 +386,14 @@ const app = createApp({
             settings._headlessDefaultV2 = true;
             localStorage.setItem('bilinovel_settings', JSON.stringify(settings));
           }
+          // 若旧配置尚未记录繁简转换开关，默认开启
+          if (typeof parsed.convertToSimplified !== 'boolean') {
+            settings.convertToSimplified = true;
+          }
         } catch (e) {}
       } else {
         settings.headless = true;
+        settings.convertToSimplified = true;
         settings._headlessDefaultV2 = true;
       }
       applyTypography();
@@ -391,12 +405,15 @@ const app = createApp({
       localStorage.setItem('bilinovel_settings', JSON.stringify(settings));
       applyTypography();
       showToast('偏好与字体设置已成功保存', 'success');
-      addLog('info', 'CONFIG', `系统偏好已更新 [字体: ${settings.fontPreset} / 无头模式: ${settings.headless ? '开启' : '关闭'}]`);
+      addLog('info', 'CONFIG', `系统偏好已更新 [字体: ${settings.fontPreset} / 无头模式: ${settings.headless ? '开启' : '关闭'} / 繁转简: ${settings.convertToSimplified ? '开启' : '关闭'}]`);
     };
 
     const resetSettings = () => {
       localStorage.removeItem('bilinovel_settings');
       settings.downloadDir = backendDefaultDir || '';
+      settings.autoOpenFolder = true;
+      settings.cleanupTemp = true;
+      settings.convertToSimplified = true;
       settings.concurrencyTabs = 3;
       settings.headless = true;
       settings.maxRetries = 3;

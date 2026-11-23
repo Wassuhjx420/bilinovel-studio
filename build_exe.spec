@@ -7,10 +7,12 @@ build_exe.spec — 哔哩轻小说 Studio Pro 专属 PyInstaller 打包规格文
 import os
 import sys
 import playwright
+import opencc
 
-# 动态定位 Playwright Node.js 驱动目录
+# 动态定位 Playwright Node.js 驱动目录与 OpenCC 词典目录
 playwright_dir = os.path.dirname(playwright.__file__)
 playwright_driver_dir = os.path.join(playwright_dir, 'driver')
+opencc_dir = os.path.dirname(opencc.__file__)
 
 block_cipher = None
 
@@ -20,6 +22,9 @@ datas = [
     ('gui', 'gui'),
     # 2. Playwright 二进制驱动层 (包含 node.exe 与 driver 通信包)
     (playwright_driver_dir, os.path.join('playwright', 'driver')),
+    # 3. OpenCC 繁简转换配置与词典数据
+    (os.path.join(opencc_dir, 'config'), os.path.join('opencc', 'config')),
+    (os.path.join(opencc_dir, 'dictionary'), os.path.join('opencc', 'dictionary')),
 ]
 
 # 核心隐藏导入（确保动态加载模块不丢失）
@@ -30,6 +35,8 @@ hiddenimports = [
     'bs4',
     'ebooklib',
     'ebooklib.epub',
+    'opencc',
+    'text_converter',
     'rubbish_secret_map',
     'runtime_env',
     'gui_service',

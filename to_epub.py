@@ -14,6 +14,7 @@ import sys
 import html
 import hashlib
 from ebooklib import epub
+from text_converter import convert_to_simplified as _convert_tc_to_sc, is_converter_available
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -389,7 +390,7 @@ def build_chapter_html(title, paragraphs, available_images):
 </html>"""
 
 
-def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="佚名", output_file=None, chapters_data=None):
+def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="佚名", output_file=None, chapters_data=None, convert_to_simplified=True):
     """从卷目录生成符合日轻标准排版的 EPUB 电子书（封面 -> 本卷信息和简介 -> 彩页 -> 正文）"""
     if not os.path.isdir(volume_dir):
         raise ValueError(f"目录不存在: {volume_dir}")
@@ -413,6 +414,27 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
 
         chapters = parse_chapters(full_text)
         print(f"成功解析出 {len(chapters)} 个章节")
+
+    # 繁简转换（默认开启）：转换书名、卷名、作者、章节标题与正文，严格保留 [插图: ...] 文件名引用与 [场景分隔...] 标记
+    if convert_to_simplified:
+        if is_converter_available():
+            novel_title = _convert_tc_to_sc(novel_title)
+            volume_title = _convert_tc_to_sc(volume_title)
+            author = _convert_tc_to_sc(author)
+            converted_chapters = []
+            for ch_t, ch_paras in chapters:
+                new_t = _convert_tc_to_sc(ch_t)
+                new_paras = []
+                for p in ch_paras:
+                    if p.startswith("[插图:") or p.startswith("[场景分隔"):
+                        new_paras.append(p)
+                    else:
+                        new_paras.append(_convert_tc_to_sc(p))
+                converted_chapters.append((new_t, new_paras))
+            chapters = converted_chapters
+            print("已执行繁简转换（规范简体中文）")
+        else:
+            print("[WARN] 未安装 opencc-python-reimplemented，已跳过繁简转换")
 
 
     # 扫描插图目录
@@ -638,13 +660,24 @@ def generate_epub(volume_dir, novel_title="轻小说", volume_title="", author="
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    if len(sys.argv) >= 2:
-        vol_dir = sys.argv[1]
+    raw_args = sys.argv[1:]
+    convert_to_simplified = True
+    pos_args = []
+    for arg in raw_args:
+        if arg in ("--no-simplified", "--keep-traditional"):
+            convert_to_simplified = False
+        elif arg == "--simplified":
+            convert_to_simplified = True
+        else:
+            pos_args.append(arg)
+
+    if len(pos_args) >= 1:
+        vol_dir = pos_args[0]
         if not os.path.isabs(vol_dir):
             vol_dir = os.path.join(base_dir, vol_dir)
-        novel_title = sys.argv[2] if len(sys.argv) >= 3 else os.path.basename(vol_dir).split("_")[0]
-        volume_title = sys.argv[3] if len(sys.argv) >= 4 else ""
-        author = sys.argv[4] if len(sys.argv) >= 5 else "佚名"
+        novel_title = pos_args[1] if len(pos_args) >= 2 else os.path.basename(vol_dir).split("_")[0]
+        volume_title = pos_args[2] if len(pos_args) >= 3 else ""
+        author = pos_args[3] if len(pos_args) >= 4 else "佚名"
     else:
         candidate_dirs = [
             os.path.join(base_dir, "novels", "败北女角太多了！", "第9卷"),
@@ -656,14 +689,20 @@ def main():
                 vol_dir = d
                 break
         if not vol_dir:
-            print("用法: python to_epub.py <小说分卷目录> [小说名] [卷名] [作者]")
+            print("用法: python to_epub.py <小说分卷目录> [小说名] [卷名] [作者] [--no-simplified]")
             return
 
         novel_title = "败北女角太多了！" if "败北" in vol_dir else "在男性禁入的游戏世界里，我唯一该做的事情 我转生成了夹在百合之间的男人"
         volume_title = "第9卷"
         author = "雨森焚火" if "败北" in vol_dir else "端桜了"
 
-    generate_epub(vol_dir, novel_title=novel_title, volume_title=volume_title, author=author)
+    generate_epub(
+        vol_dir,
+        novel_title=novel_title,
+        volume_title=volume_title,
+        author=author,
+        convert_to_simplified=convert_to_simplified,
+    )
 
 
 if __name__ == "__main__":

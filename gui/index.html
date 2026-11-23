@@ -252,6 +252,14 @@
                   </div>
 
                   <div class="flex items-center gap-2.5">
+                    <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl apple-inset-box cursor-pointer select-none"
+                           title="开启后自动将繁体书名、目录与正文转为规范简体中文">
+                      <span class="text-[11px] font-medium apple-title-secondary">繁转简</span>
+                      <span class="apple-switch scale-90">
+                        <input type="checkbox" v-model="settings.convertToSimplified">
+                        <span class="apple-switch-slider"></span>
+                      </span>
+                    </label>
                     <button @click="addSelectedToQueue(false)" class="btn-apple-secondary px-4 py-2 rounded-xl text-xs font-medium apple-pressable">
                       加入下载队列
                     </button>
@@ -573,6 +581,27 @@
             </div>
           </div>
 
+
+          <!-- 文本处理与繁简转换 -->
+          <div class="apple-card p-5 rounded-2xl space-y-4">
+            <h3 class="text-xs font-semibold apple-title-primary flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#0a84ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+              <span>文本处理与繁简转换</span>
+            </h3>
+
+            <div class="space-y-3 pt-1">
+              <div class="flex items-center justify-between p-3.5 rounded-xl apple-inset-box">
+                <div class="space-y-0.5 pr-4">
+                  <span class="block text-xs font-medium apple-title-primary">繁体自动转简体</span>
+                  <span class="block text-[10px] apple-title-tertiary leading-normal">默认开启：抓取与打包 EPUB 时自动将繁体书名、目录与正文转为规范简体中文，保留原翻译用词、标点符号与排版结构；关闭则原样保留繁体</span>
+                </div>
+                <label class="apple-switch shrink-0">
+                  <input type="checkbox" v-model="settings.convertToSimplified">
+                  <span class="apple-switch-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
 
           <!-- 界面字体 -->
           <div class="apple-card p-5 rounded-2xl space-y-4">

@@ -18,6 +18,7 @@
 ├── runtime_env.py                     # 运行时环境感知 (只读静态资源与物理持久化存储隔离)
 ├── scrape_linovelib.py                # 核心爬虫与异步并发抓取流水线主入口
 ├── to_epub.py                         # EPUB 转换与打包引擎（集成 Calibre/Kavita 系列元数据）
+├── text_converter.py                  # 轻小说繁简转换引擎（基于 OpenCC t2s 与台版异体字规范化）
 ├── rubbish_secret_map.py              # 站点字体反混淆字典
 ├── gui/                               # Vue 3 现代化毛玻璃前端交互界面
 │   ├── index.html
@@ -47,6 +48,7 @@
 - `playwright` (异步浏览器自动化与反爬绕过)
 - `beautifulsoup4` (HTML 目录与结构解析)
 - `ebooklib` (EPUB 电子书封装)
+- `opencc-python-reimplemented` (繁简转换引擎，默认开启繁转简；PyInstaller 打包时内嵌其 `config/` 与 `dictionary/` 目录)
 - `pywebview` (可选，原生磨砂毛玻璃桌面窗口模式)
 - 本地系统 Edge 浏览器 (`channel="msedge"`) — 无需额外下载 Chromium
 
@@ -135,6 +137,12 @@ python to_epub.py novels/败北女角太多了！/第9卷 "败北女角太多了
   - 自动从卷名提取卷号与系列名；
   - 写入 `calibre:series`、`calibre:series_index` 以及 EPUB 3 `belongs-to-collection`（Collection Type / Group Position）规范系列标签，支持 Calibre 与 Kavita 媒体库分卷自动归类；
 - **元数据封装**：自动绑定主封面（Cover Page）、目录导航（NCX & Nav）、作者信息与 UUID。
+
+### 3. `text_converter.py` — 轻小说繁简转换引擎（默认开启，可配置开关）
+
+- **默认开启，全链路可配置**：GUI 偏好设置与解析工作台均提供同步开关（`settings.convertToSimplified`，默认开启），`scrape_volume_async` 与 `generate_epub` 均支持 `convert_to_simplified=True` 参数，CLI 支持通过 `--no-simplified` / `--keep-traditional` 关闭以保留原文。
+- **高保真无损转换策略**：基于 OpenCC `t2s` 字符与短语映射（拒绝使用会改写「文字→文本」「视窗→窗口」「设定→设置」的 `tw2sp` 地区词汇替换），并补充台湾正体轻小说常见异体字规范化（`妳→你`、`牠→它`、`拚→拼`、`揹→背`、`摀→捂`、`瞇→眯`、`暱→昵`、`搧→扇`、`伕→夫`、`搆→够`、`砲→炮`、`珮→佩`、`簷→檐`、`痺→痹`、`睪→睾`、`傚→效`），保护日文姓氏汉字「篠」与动词「覆上/覆住」，上下文精准区分「著/着」（保留「著名/显著/著作/原著」等 `zhù` 义词，同时转换「看著书桌/看著名牌/讨论著」中的助词「著→着」），对简体原文完全幂等。
+- **结构与路径安全**：`to_epub.py` 转换时严格跳过 `[插图: ...]` 与 `[场景分隔...]` 标记，避免破坏本地插图文件名引用；模块同时提供 `convert_epub_file` 对已有 EPUB 仅转换 XML 文本节点与 OPF 系列元数据。
 
 ## Anti-Patterns & Best Practices
 

@@ -77,14 +77,15 @@ class JsApi:
     def choose_folder(self, *args):
         return gui_service.choose_folder()
 
-    def build_epub_manually(self, vol_dir_or_payload, novel_title="轻小说", volume_title="第1卷", author="佚名"):
+    def build_epub_manually(self, vol_dir_or_payload, novel_title="轻小说", volume_title="第1卷", author="佚名", convert_to_simplified=True):
         if isinstance(vol_dir_or_payload, dict):
             vol_dir = vol_dir_or_payload.get("dir", "")
             title = vol_dir_or_payload.get("title", "轻小说")
             volume = vol_dir_or_payload.get("volume", "第1卷")
             author_name = vol_dir_or_payload.get("author", "佚名")
-            return gui_service.build_epub_manually(vol_dir, title, volume, author_name)
-        return gui_service.build_epub_manually(vol_dir_or_payload, novel_title, volume_title, author)
+            conv_sc = bool(vol_dir_or_payload.get("convertToSimplified", True))
+            return gui_service.build_epub_manually(vol_dir, title, volume, author_name, convert_to_simplified=conv_sc)
+        return gui_service.build_epub_manually(vol_dir_or_payload, novel_title, volume_title, author, convert_to_simplified=convert_to_simplified)
 
 
 
@@ -579,6 +580,7 @@ class GuiService:
             concurrency = int(settings.get("concurrencyTabs", 3))
             headless = bool(settings.get("headless", True))
             cleanup_temp = bool(settings.get("cleanupTemp", True))
+            convert_to_simplified = bool(settings.get("convertToSimplified", True))
 
             for task in tasks:
                 if not self.is_downloading:
@@ -627,6 +629,7 @@ class GuiService:
                             headless=headless,
                             chapters_list=task.get("chapters"),
                             cleanup_temp=cleanup_temp,
+                            convert_to_simplified=convert_to_simplified,
                             on_progress=progress_cb,
                             on_worker=worker_cb,
                             on_log=log_cb
@@ -639,7 +642,7 @@ class GuiService:
 
                 safe_novel = re.sub(r'[\\/:*?"<>|]', "_", novel_title)
                 safe_vol = re.sub(r'[\\/:*?"<>|]', "_", volume_title)
-                vol_output_dir = os.path.join(download_dir, safe_novel, safe_vol)
+                vol_output_dir = os.path.dirname(epub_file) if epub_file else os.path.join(download_dir, safe_novel, safe_vol)
 
                 # 自动清理临时素材（插图散装文件夹与独立封面图，EPUB 内已完整封装）
                 if cleanup_temp:
@@ -775,11 +778,17 @@ class GuiService:
             self.log("warn", "SYSTEM", f"调用文件夹对话框异常: {e}")
         return DEFAULT_NOVELS_DIR
 
-    def build_epub_manually(self, volume_dir, novel_title="轻小说", volume_title="第1卷", author="佚名"):
+    def build_epub_manually(self, volume_dir, novel_title="轻小说", volume_title="第1卷", author="佚名", convert_to_simplified=True):
         """手动重新打包指定分卷为 EPUB"""
         self.log("info", "EPUB", f"开始重新打包: {volume_dir}")
         try:
-            epub_file = generate_epub(volume_dir, novel_title, volume_title, author=author)
+            epub_file = generate_epub(
+                volume_dir,
+                novel_title,
+                volume_title,
+                author=author,
+                convert_to_simplified=convert_to_simplified,
+            )
             self.log("success", "EPUB", f"重新封装成功: {os.path.basename(epub_file)}")
             return {"status": "success", "path": epub_file}
         except Exception as e:
