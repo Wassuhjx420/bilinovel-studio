@@ -5,11 +5,11 @@
 
 *极速多 Tab 异步并发抓取 · 精排日轻/韩轻 EPUB 封装 · 现代化桌面客户端*
 
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue.svg?style=flat-square&logo=windows)](https://github.com)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-blue.svg?style=flat-square)](https://github.com)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Playwright](https://img.shields.io/badge/Browser-Microsoft%20Edge-0078D7.svg?style=flat-square&logo=microsoftedge&logoColor=white)](https://www.microsoft.com/edge)
+[![Playwright](https://img.shields.io/badge/Browser-Edge%20%7C%20Chromium-0078D7.svg?style=flat-square)](https://playwright.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.2.0-orange.svg?style=flat-square)](https://github.com)
+[![Release](https://img.shields.io/badge/Release-v1.3.0-orange.svg?style=flat-square)](https://github.com)
 
 </div>
 
@@ -70,6 +70,9 @@
   * 修正台湾正体常见异体用字与上下文「著/着」转换，严格保留原翻译用词、标点符号与排版结构；支持在客户端界面或命令行通过 `--no-simplified` 关闭以保留原文。
 * **Calibre & Kavita 媒体库系列元数据集成**
   * 自动从分卷标题提取卷号与系列名，写入 `calibre:series`、`calibre:series_index` 与 EPUB 3 `belongs-to-collection` 标签，导入媒体库即可自动分卷归类。
+* **跨平台支持与 Linux 服务器部署**
+  * 浏览器启动器按平台自动探测回退（Windows 优先 Edge/Chrome，Linux 优先 Playwright Chromium 与系统 Chromium/Chrome/Edge），无图形界面的 Linux 服务器自动切换无头模式并启用 `--disable-dev-shm-usage` 等容器安全参数；
+  * 原生提供 Web 服务部署模式（`--web --host 0.0.0.0 --port 8765`）、浏览器直连一键下载 EPUB 接口（`/api/epub/download`）以及 `Dockerfile` / `docker-compose.yml` 一键容器化部署。
 
 ---
 
@@ -81,7 +84,7 @@
 
 | 版本类型 | 文件名 | 说明 |
 | :--- | :--- | :--- |
-| **安装版** | `BiliNovelStudio_Setup_v1.2.0.exe` | 两步安装向导 |
+| **安装版** | `BiliNovelStudio_Setup_v1.3.0.exe` | 两步安装向导 |
 | **绿色免安装便携版** | `BiliNovelStudio_Portable.zip` | 解压至任意文件夹即可直接运行 |
 
 > **系统要求**：Windows 10 / Windows 11（系统自带 Microsoft Edge 浏览器即可，无需额外下载配置内核）。
@@ -94,35 +97,49 @@
 
 ### 1. 环境准备
 * **Python**：3.10 或更高版本
-* **操作系统**：Windows 10 / 11
+* **操作系统**：Windows 10 / 11、主流 Linux 发行版（Ubuntu / Debian / CentOS / Rocky / Arch 等）或 Docker 容器
 
 ### 2. 克隆仓库与安装依赖
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/bilinovel-studio.git
+git clone https://github.com/Wassuhjx420/bilinovel-studio.git
 cd bilinovel-studio
 
 # 安装核心依赖
 pip install -r requirements.txt
+
+# Linux 服务器 / 无 Edge 环境需安装 Playwright Chromium 及系统依赖
+# 国内服务器建议加上 npmmirror 镜像源加速下载：
+PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright playwright install chromium
+playwright install-deps chromium
 ```
 
-### 3. 一键启动桌面客户端
+### 3. 一键启动桌面客户端 / Linux Web 服务
 ```bash
-# 启动桌面客户端
+# Windows / 桌面环境启动客户端
 python launch_gui.py
+# 或在 Windows 中直接双击 start_gui.bat
 
-# 或在 Windows 中直接双击
-start_gui.bat
+# Linux 服务器启动 Web 服务（自动无头模式，浏览器访问 http://<服务器IP>:8765/）
+bash start_server.sh
+# 或自定义监听地址与端口
+python3 launch_gui.py --web --no-browser --host 0.0.0.0 --port 8765
 ```
+
+#### Docker 一键部署（推荐用于 Linux 服务器 / NAS）
+```bash
+docker compose up -d
+```
+部署后浏览器访问 `http://<服务器IP>:8765/` 即可远程解析、并发抓取并在任务完成后点击「下载 EPUB」直接取回电子书；抓取产物与会话统一持久化在宿主机 `./data/` 目录。
 
 ### 4. 命令行 (CLI) 快速用法
 如果你习惯使用无图形界面的命令行：
 ```bash
-# 爬取单卷直达链接 (默认开启繁转简；如需保留繁体可追加 --no-simplified)
+# 爬取单卷直达链接 (Linux 无头服务器自动启用 --headless；如需保留繁体可追加 --no-simplified)
 python scrape_linovelib.py "https://www.linovelib.com/novel/3095/vol_328281.html"
 
-# 爬取目录页并指定分卷序号 (如第 1 卷)
-python scrape_linovelib.py https://www.linovelib.com/novel/5131/catalog 1
+# 爬取目录页并指定分卷序号 (如第 1 卷)，可调整并发数与输出目录
+python scrape_linovelib.py https://www.linovelib.com/novel/5131/catalog 1 --headless --concurrency 2 -o /data/novels
 
 # 从已有分卷抓取目录重新打包出 EPUB (默认开启繁转简；追加 --no-simplified 可保留原文)
 python to_epub.py novels/败北女角太多了！/第1卷 "败北女角太多了！" "第1卷" "雨森焚火"
@@ -141,7 +158,7 @@ build_release.bat
 执行后将在 `dist/` 目录下生成：
 * `dist/BiliNovelStudio/`：免安装绿色运行时目录（已内嵌专属文件夹图标）；
 * `dist/BiliNovelStudio_Portable.zip`：便携发布压缩包；
-* `dist/BiliNovelStudio_Setup_v1.2.0.exe`：全中文两步极简安装向导。
+* `dist/BiliNovelStudio_Setup_v1.3.0.exe`：全中文两步极简安装向导。
 
 ---
 
@@ -149,13 +166,17 @@ build_release.bat
 
 ```
 bilinovel-studio/
-├── launch_gui.py          # 桌面客户端主启动器 (PyWebView / 本地 REST 桥接)
+├── launch_gui.py          # 桌面客户端与 Linux Web 服务启动器 (PyWebView / HTTP REST)
 ├── gui_service.py         # GUI 服务端调度引擎与事件总线
-├── runtime_env.py         # 运行时环境感知 (只读静态资源与持久化存储隔离)
+├── runtime_env.py         # 运行时环境感知 (只读资源与持久化存储隔离，支持环境变量挂载)
+├── browser_launcher.py    # 跨平台浏览器智能探测与持久化启动器 (Edge / Chrome / Chromium)
 ├── scrape_linovelib.py    # 核心爬虫与异步并发抓取流水线
 ├── to_epub.py             # EPUB 转换与精排打包引擎
 ├── text_converter.py      # 轻小说繁简转换引擎（繁转简与无损 EPUB 文本节点转换）
 ├── rubbish_secret_map.py  # 站点字体反混淆字典
+├── start_server.sh        # Linux 服务器 Web 一键启动脚本
+├── Dockerfile             # Linux 容器化构建文件
+├── docker-compose.yml     # Docker Compose 一键部署编排
 ├── gui/                   # Vue 3 现代化前端交互界面
 │   ├── index.html
 │   ├── app.js
