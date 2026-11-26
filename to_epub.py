@@ -16,8 +16,10 @@ import hashlib
 from ebooklib import epub
 from text_converter import convert_to_simplified as _convert_tc_to_sc, is_converter_available
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 CSS_CONTENT = """
 @charset "utf-8";

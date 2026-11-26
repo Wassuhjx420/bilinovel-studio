@@ -1,6 +1,6 @@
 """
-哔哩轻小说极速爬虫 & 出版级 EPUB 制作工具 - 桌面 GUI 启动器
-支持 PyWebView 原生桌面客户端窗口模式 与 浏览器双向 REST/SSE 桥接通信模式
+哔哩轻小说极速爬虫 & 出版级 EPUB 制作工具 - 桌面 GUI 与 Linux 服务器 Web 启动器
+支持 PyWebView 原生桌面窗口模式、桌面浏览器模式以及 Linux 无头服务器 / Docker Web 部署模式
 
 Disclaimer / 免责声明:
 本项目仅供 Python 自动化技术交流与个人离线阅读研究使用。
@@ -8,9 +8,11 @@ Disclaimer / 免责声明:
 严禁将本项目及衍生工具用于任何商业营利目的。
 """
 
+import argparse
 import json
 import os
 import queue
+import signal
 import sys
 import threading
 import urllib.parse
@@ -19,19 +21,24 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 # 在无控制台 (Windows GUI / pythonw) 运行时确保标准输出流安全
 if sys.stdout is None:
-    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
 if sys.stderr is None:
-    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 from gui_service import gui_service, JsApi
-from runtime_env import get_gui_dir, get_novels_dir
+from runtime_env import get_gui_dir, get_novels_dir, is_headless_linux
 
 GUI_DIR = get_gui_dir()
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    """允许端口快速复用，避免 Linux 服务器重启时触发 TIME_WAIT Address already in use"""
+    allow_reuse_address = True
+    daemon_threads = True
+
 
 class BridgeHTTPHandler(SimpleHTTPRequestHandler):
-    """支持静态资源托管与前后端双向 REST/SSE 桥接通信的 HTTP 处理器"""
+    """支持静态资源托管与前后端双向 REST/长轮询/文件下载的 HTTP 处理器"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=GUI_DIR, **kwargs)
@@ -51,9 +58,8 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
-        except Exception as e:
+        except Exception:
             pass
-
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -67,6 +73,21 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
+        # 0. 根路径重定向至 index.html，方便服务器直接访问 http://<host>:<port>/
+        if path == "/":
+            self.path = "/index.html"
+            super().do_GET()
+            return
+
+        # 0.1 健康检查接口（便于 Docker / systemd / 反向代理探活）
+        if path == "/api/health":
+            self._send_json({
+                "status": "ok",
+                "platform": sys.platform,
+                "isHeadlessServer": is_headless_linux(),
+            })
+            return
+
         # 1. 扫描书架
         if path == "/api/bookshelf":
             dl_dir = query.get("dir", [None])[0]
@@ -76,11 +97,9 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
 
         # 2. 事件长轮询/流式获取
         if path == "/api/events":
-            # 返回当前积攒的历史或最新事件
             sub_q = queue.Queue()
             gui_service.event_subscribers.append(sub_q)
             try:
-                # 等待 0.1~2.0 秒获取事件，若无事件则返回空
                 events = []
                 try:
                     ev = sub_q.get(timeout=1.5)
@@ -101,10 +120,45 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
             self._send_json({"status": "success", "folder": folder})
             return
 
-        # 4. 获取动态默认环境配置（避免前端写死任何个人绝对路径）
+        # 4. 获取动态默认环境配置
         if path == "/api/defaults":
-            from gui_service import DEFAULT_NOVELS_DIR
-            self._send_json({"status": "success", "downloadDir": os.path.normpath(DEFAULT_NOVELS_DIR)})
+            self._send_json({
+                "status": "success",
+                "downloadDir": os.path.normpath(get_novels_dir()),
+                "isHeadlessServer": is_headless_linux(),
+                "platform": sys.platform,
+            })
+            return
+
+        # 5. 远程浏览器安全下载已生成的 EPUB 电子书
+        if path == "/api/epub/download":
+            req_path = query.get("path", [""])[0]
+            if not gui_service.is_allowed_epub_path(req_path):
+                self._send_json({"status": "error", "message": "无效或无权限访问的 EPUB 文件路径"}, status=403)
+                return
+
+            real_path = os.path.realpath(req_path)
+            filename = os.path.basename(real_path)
+            quoted_name = urllib.parse.quote(filename, safe="")
+            file_size = os.path.getsize(real_path)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/epub+zip")
+                self.send_header("Content-Length", str(file_size))
+                self.send_header(
+                    "Content-Disposition",
+                    f"attachment; filename=\"book.epub\"; filename*=UTF-8''{quoted_name}",
+                )
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                with open(real_path, "rb") as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                pass
             return
 
         # 静态文件正常处理
@@ -179,11 +233,12 @@ class BridgeHTTPHandler(SimpleHTTPRequestHandler):
         self._send_json({"status": "not_found"}, status=404)
 
 
-def start_local_server(port=8765):
-    server = ThreadingHTTPServer(('127.0.0.1', port), BridgeHTTPHandler)
+def start_local_server(port=8765, host="127.0.0.1"):
+    server = ReusableThreadingHTTPServer((host, int(port)), BridgeHTTPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    return f"http://127.0.0.1:{port}/index.html"
+    display_host = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    return f"http://{display_host}:{port}/index.html"
 
 
 def check_environment():
@@ -218,41 +273,92 @@ def check_environment():
         print("[!] 提示：未检测到 opencc-python-reimplemented，繁简转换功能将自动跳过。可执行 pip install -r requirements.txt 安装。")
 
 
+def parse_args():
+    headless_linux = is_headless_linux()
+    default_host = os.environ.get("BILINOVEL_HOST", "0.0.0.0" if headless_linux else "127.0.0.1")
+    default_port = int(os.environ.get("BILINOVEL_PORT", "8765"))
+
+    parser = argparse.ArgumentParser(description="哔哩轻小说 Studio Pro 桌面客户端 / Linux Web 服务启动器")
+    parser.add_argument("--host", default=default_host, help=f"HTTP 监听地址（默认 {default_host}）")
+    parser.add_argument("--port", type=int, default=default_port, help=f"HTTP 监听端口（默认 {default_port}）")
+    parser.add_argument("--web", "--server", dest="web_mode", action="store_true", help="强制以 Web 服务模式运行（跳过原生桌面窗口）")
+    parser.add_argument("--no-browser", action="store_true", help="启动 Web 服务后不自动打开本地浏览器")
+    return parser.parse_args()
+
+
+def _wait_for_shutdown():
+    stop_event = threading.Event()
+
+    def _handle_signal(signum, frame):
+        stop_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _handle_signal)
+        except Exception:
+            pass
+
+    try:
+        while not stop_event.is_set():
+            stop_event.wait(0.5)
+    except KeyboardInterrupt:
+        pass
+    print("\n[*] 服务已退出。")
+
+
 def main():
+    args = parse_args()
     check_environment()
+    headless_linux = is_headless_linux()
+
     print("=" * 60)
-    print(" 🚀 哔哩轻小说极速爬虫 & 出版级 EPUB 制作客户端 Pro (GUI)")
+    print(" 哔哩轻小说极速爬虫 & 精排 EPUB 制作客户端 Pro")
     print("=" * 60)
 
-    url = start_local_server(8765)
-    print(f"[*] 本地前后端同构服务已就绪: {url}")
+    url = start_local_server(port=args.port, host=args.host)
+    print(f"[*] 本地前后端服务已就绪: http://{args.host}:{args.port}/")
 
-    # 尝试加载 pywebview 原生窗口并注入 js_api 桥接
+    # 1. Linux 无头服务器环境或显式指定 --web/--server：直接以纯 Web 服务常驻运行
+    if headless_linux or args.web_mode:
+        if headless_linux:
+            print("[*] 检测到 Linux 无头服务器环境，已自动启用 Web 服务部署模式。")
+            print(f"[*] 请通过浏览器访问: http://<服务器IP>:{args.port}/")
+        elif not args.no_browser:
+            try:
+                webbrowser.open(url)
+                print(f"[*] 已在浏览器中打开交互界面: {url}")
+            except Exception:
+                pass
+        print("[*] 按 Ctrl+C 或发送 SIGTERM 停止服务。")
+        _wait_for_shutdown()
+        return
+
+    # 2. 桌面环境优先尝试加载 pywebview 原生窗口，失败时回退至浏览器模式
     try:
         import webview
-        print("[*] 检测到 pywebview，正在启动原生磨砂毛玻璃桌面客户端窗口...")
+        print("[*] 检测到 pywebview，正在启动原生桌面客户端窗口...")
         window = webview.create_window(
-            title='哔哩轻小说 Studio Pro',
+            title="哔哩轻小说 Studio Pro",
             url=url,
             width=1260,
             height=820,
             min_size=(1000, 680),
-            background_color='#07090e',
-            js_api=JsApi()
+            background_color="#07090e",
+            js_api=JsApi(),
         )
         gui_service.set_window(window)
-
         webview.start(debug=False)
     except Exception as e:
-        print(f"[!] PyWebView 窗口启动提示 ({e})，自动启动浏览器同构模式...")
-        webbrowser.open(url)
-        print("[*] 已在浏览器中打开前端交互界面，后端 REST/SSE 桥接通信已全量激活！")
+        print(f"[!] PyWebView 窗口启动提示 ({e})，自动启动浏览器模式...")
+        if not args.no_browser:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        print(f"[*] 已启动浏览器访问模式: {url}")
         print("[*] 按 Ctrl+C 可停止本地服务。")
-        try:
-            threading.Event().wait()
-        except KeyboardInterrupt:
-            print("\n[*] 服务已退出。")
+        _wait_for_shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,0 +1,14 @@
+services:
+  bilinovel-studio:
+    build: .
+    container_name: bilinovel-studio
+    restart: unless-stopped
+    shm_size: "1gb"
+    ports:
+      - "8765:8765"
+    environment:
+      - BILINOVEL_HOST=0.0.0.0
+      - BILINOVEL_PORT=8765
+      - BILINOVEL_DATA_DIR=/data
+    volumes:
+      - ./data:/data

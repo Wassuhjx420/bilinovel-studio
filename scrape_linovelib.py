@@ -28,7 +28,8 @@ import time
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 from to_epub import generate_epub
-from runtime_env import get_storage_dir
+from runtime_env import get_storage_dir, get_profile_dir, get_novels_dir
+from browser_launcher import launch_persistent_browser, resolve_headless
 from text_converter import convert_to_simplified as _convert_tc_to_sc, is_converter_available
 
 try:
@@ -47,8 +48,10 @@ def decrypt_font_text(text):
     return "".join(sb)
 
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 BASE_DOMAIN = "https://www.linovelib.com"
 CONCURRENT_TABS = 3  # 3~4 Tab 章节并发
@@ -861,7 +864,7 @@ async def scrape_volume_async(
     custom_novel_name=None,
     download_dir=None,
     concurrency=CONCURRENT_TABS,
-    headless=False,
+    headless=None,
     chapters_list=None,
     cleanup_temp=False,
     convert_to_simplified=True,
@@ -870,8 +873,7 @@ async def scrape_volume_async(
     on_log=None
 ):
     """异步多 Tab 并发爬取指定分卷全部章节及子分页，并生成出版级 EPUB"""
-    base_dir = get_storage_dir()
-    profile_dir = os.path.join(base_dir, ".edge_profile")
+    profile_dir = get_profile_dir()
 
     def _log(level, tag, msg):
         print(f"[{tag}] {msg}")
@@ -887,46 +889,20 @@ async def scrape_volume_async(
 
     async with async_playwright() as p:
         try:
-            ctx = await p.chromium.launch_persistent_context(
+            ctx, browser_label = await launch_persistent_browser(
+                p,
                 user_data_dir=profile_dir,
-                channel="msedge",
                 headless=headless,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    # 禁用后台标签页降频与节电机制，确保所有并发 Worker Tab 保持全速运行
-                    "--disable-background-timer-throttling",
-                    "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding",
-                    "--disable-features=CalculateNativeWinOcclusion",
-                    # 在浏览器 C++ 网络栈直接阻断广告和追踪域名，零 CDP IPC 损耗
-                    "--host-resolver-rules="
-                    "MAP *googlesyndication* 127.0.0.1, "
-                    "MAP *doubleclick* 127.0.0.1, "
-                    "MAP *pagead2* 127.0.0.1, "
-                    "MAP *hm.baidu.com* 127.0.0.1, "
-                    "MAP *cnzz* 127.0.0.1, "
-                    "MAP *googletagmanager* 127.0.0.1, "
-                    "MAP *googletagservices* 127.0.0.1, "
-                    "MAP *adservice.google* 127.0.0.1, "
-                    "MAP *adsbygoogle* 127.0.0.1, "
-                    "MAP *bxb.im* 127.0.0.1, "
-                    "MAP *pos.baidu.com* 127.0.0.1, "
-                    "MAP *clarity.ms* 127.0.0.1, "
-                    "MAP *cpatrk.net* 127.0.0.1",
-                ],
-                ignore_default_args=["--enable-automation"]
+                default_desktop_headless=False,
+                enable_background_unthrottle=True,
+                logger=_log,
             )
+            _log("info", "ENGINE", f"浏览器已启动: {browser_label}")
         except Exception as e:
-            err_msg = str(e)
             print("\n" + "!" * 64)
-            if "msedge" in err_msg or "executable" in err_msg or "not found" in err_msg.lower():
-                print(" [!] 启动失败：未检测到 Microsoft Edge 浏览器。")
-                print(" [*] 本工具在 Windows 环境下默认使用系统自带的 Edge 浏览器内核。")
-                print(" [*] 请安装 Microsoft Edge 浏览器后再试。")
-            else:
-                print(f" [!] 浏览器引擎初始化异常: {err_msg}")
+            print(f" [!] 浏览器引擎启动失败:\n{e}")
             print("!" * 64 + "\n")
+            _log("error", "ENGINE", f"浏览器引擎启动失败: {e}")
             return None
 
         # 全局注入伪装指纹与延迟反爬蜜罐混淆定时器高速穿透（对 Context 下所有新页面和分卷页面自动生效）
@@ -1026,7 +1002,7 @@ async def scrape_volume_async(
         if safe_vol_name.isdigit():
             safe_vol_name = f"第{safe_vol_name}卷"
 
-        root_download_dir = download_dir if download_dir else os.path.join(base_dir, "novels")
+        root_download_dir = download_dir if download_dir else get_novels_dir()
         output_dir = os.path.join(root_download_dir, safe_novel_name, safe_vol_name)
         images_dir = os.path.join(output_dir, "插图")
         full_text_file = os.path.join(output_dir, f"{safe_novel_name}_{safe_vol_name}_完整版.txt")
@@ -1338,13 +1314,26 @@ async def scrape_volume_async(
 
 
 
-def scrape_volume(novel_input, target_vol_param=None, custom_novel_name=None, convert_to_simplified=True):
+def scrape_volume(
+    novel_input,
+    target_vol_param=None,
+    custom_novel_name=None,
+    convert_to_simplified=True,
+    headless=None,
+    concurrency=CONCURRENT_TABS,
+    download_dir=None,
+    cleanup_temp=False,
+):
     """同步入口封装"""
     return asyncio.run(
         scrape_volume_async(
             novel_input,
             target_vol_param,
             custom_novel_name,
+            download_dir=download_dir,
+            concurrency=concurrency,
+            headless=headless,
+            cleanup_temp=cleanup_temp,
             convert_to_simplified=convert_to_simplified,
         )
     )
@@ -1352,15 +1341,55 @@ def scrape_volume(novel_input, target_vol_param=None, custom_novel_name=None, co
 
 def main():
     raw_args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in raw_args):
+        print(
+            "用法: python scrape_linovelib.py <小说URL或ID> [分卷序号或名称] [自定义书名] [选项]\n"
+            "\n选项:\n"
+            "  --headless             强制无头模式运行（Linux 无桌面服务器默认自动开启）\n"
+            "  --headed               有头桌面浏览器模式运行\n"
+            "  --no-simplified        关闭繁转简，保留原繁体文本\n"
+            "  --keep-traditional     同 --no-simplified\n"
+            "  --concurrency N        并发 Worker Tab 数量（默认 3）\n"
+            "  --output-dir, -o DIR   指定输出保存根目录（默认 novels/）\n"
+            "  --cleanup              EPUB 打包完成后自动清理临时插图目录与独立封面\n"
+        )
+        return
+
     convert_to_simplified = True
+    headless = None
+    concurrency = CONCURRENT_TABS
+    download_dir = None
+    cleanup_temp = False
     pos_args = []
-    for arg in raw_args:
+
+    i = 0
+    while i < len(raw_args):
+        arg = raw_args[i]
         if arg in ("--no-simplified", "--keep-traditional"):
             convert_to_simplified = False
         elif arg == "--simplified":
             convert_to_simplified = True
+        elif arg == "--headless":
+            headless = True
+        elif arg == "--headed":
+            headless = False
+        elif arg == "--cleanup":
+            cleanup_temp = True
+        elif arg == "--no-cleanup":
+            cleanup_temp = False
+        elif arg == "--concurrency" and i + 1 < len(raw_args):
+            i += 1
+            concurrency = max(1, int(raw_args[i]))
+        elif arg.startswith("--concurrency="):
+            concurrency = max(1, int(arg.split("=", 1)[1]))
+        elif arg in ("--output-dir", "-o") and i + 1 < len(raw_args):
+            i += 1
+            download_dir = raw_args[i]
+        elif arg.startswith("--output-dir="):
+            download_dir = arg.split("=", 1)[1]
         else:
             pos_args.append(arg)
+        i += 1
 
     novel_url = pos_args[0] if len(pos_args) >= 1 else "https://www.linovelib.com/novel/3768/vol_308156.html"
     target_vol = pos_args[1] if len(pos_args) >= 2 else None
@@ -1371,6 +1400,10 @@ def main():
         target_vol_param=target_vol,
         custom_novel_name=custom_name,
         convert_to_simplified=convert_to_simplified,
+        headless=headless,
+        concurrency=concurrency,
+        download_dir=download_dir,
+        cleanup_temp=cleanup_temp,
     )
 
 

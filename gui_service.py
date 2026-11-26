@@ -26,7 +26,8 @@ from playwright.async_api import async_playwright
 
 from to_epub import generate_epub
 from scrape_linovelib import scrape_volume_async
-from runtime_env import get_storage_dir, get_novels_dir, get_profile_dir, get_cache_dir
+from runtime_env import get_storage_dir, get_novels_dir, get_profile_dir, get_cache_dir, is_headless_linux
+from browser_launcher import launch_persistent_browser
 
 
 BASE_DOMAIN = "https://www.linovelib.com"
@@ -40,7 +41,12 @@ class JsApi:
     """专供 PyWebView JS 环境调用的纯净 API 暴露类（不包含任何系统对象与内部状态，防止反射递归）"""
 
     def get_defaults(self, *args):
-        return {"status": "success", "downloadDir": os.path.normpath(DEFAULT_NOVELS_DIR)}
+        return {
+            "status": "success",
+            "downloadDir": os.path.normpath(DEFAULT_NOVELS_DIR),
+            "isHeadlessServer": is_headless_linux(),
+            "platform": sys.platform,
+        }
 
     def parse_novel(self, url_or_payload):
         if isinstance(url_or_payload, dict):
@@ -100,6 +106,28 @@ class GuiService:
         self.current_task = None
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.active_workers = {}
+        self.allowed_download_roots = {
+            os.path.realpath(DEFAULT_NOVELS_DIR),
+            os.path.realpath(PROJECT_DIR),
+        }
+        self.generated_epubs = set()
+
+    def is_allowed_epub_path(self, file_path: str) -> bool:
+        """校验请求的 EPUB 下载路径是否合法且位于受信任的下载目录中（防止路径穿越）"""
+        if not file_path or not str(file_path).lower().endswith(".epub"):
+            return False
+        real_path = os.path.realpath(file_path)
+        if not os.path.isfile(real_path):
+            return False
+        if real_path in self.generated_epubs:
+            return True
+        for root in list(self.allowed_download_roots):
+            try:
+                if os.path.commonpath([real_path, root]) == root:
+                    return True
+            except ValueError:
+                continue
+        return False
 
     def set_window(self, window):
         """绑定 PyWebView 原生窗口对象到私有模块级引用"""
@@ -137,12 +165,15 @@ class GuiService:
 
 
     def log(self, level, tag, message):
-        """标准化日志推流"""
+        """标准化日志推流（在 Linux 无头服务器模式下同步输出至标准输出，便于 docker logs / journalctl 查看）"""
+        ts = datetime.now().strftime("%H:%M:%S")
+        if is_headless_linux():
+            print(f"[{ts}] [{level.upper()}] [{tag}] {message}", flush=True)
         self.emit("log", {
             "level": level,  # 'info', 'success', 'warn', 'error'
             "tag": tag,
             "msg": message,
-            "time": datetime.now().strftime("%H:%M:%S")
+            "time": ts
         })
 
 
@@ -165,34 +196,23 @@ class GuiService:
 
         detail_url = f"{BASE_DOMAIN}/novel/{novel_id}.html"
         catalog_url = f"{BASE_DOMAIN}/novel/{novel_id}/catalog"
-        profile_dir = os.path.join(PROJECT_DIR, ".edge_profile")
+        profile_dir = get_profile_dir()
 
         self.log("info", "PARSER", f"正在启动引擎并发解析小说 ID: {novel_id} (书籍详情与全卷目录双通道)")
 
         async with async_playwright() as p:
             try:
-                ctx = await p.chromium.launch_persistent_context(
+                ctx, browser_label = await launch_persistent_browser(
+                    p,
                     user_data_dir=profile_dir,
-                    channel="msedge",
                     headless=True,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--host-resolver-rules="
-                        "MAP *googlesyndication* 127.0.0.1, "
-                        "MAP *doubleclick* 127.0.0.1, "
-                        "MAP *pagead2* 127.0.0.1, "
-                        "MAP *hm.baidu.com* 127.0.0.1, "
-                        "MAP *cnzz* 127.0.0.1"
-                    ],
-                    ignore_default_args=["--enable-automation"]
+                    default_desktop_headless=True,
+                    enable_background_unthrottle=False,
+                    logger=self.log,
                 )
+                self.log("info", "ENGINE", f"解析引擎浏览器已启动: {browser_label}")
             except Exception as e:
-                err_msg = str(e)
-                if "msedge" in err_msg or "executable" in err_msg or "not found" in err_msg.lower():
-                    self.log("error", "ENGINE", "未检测到 Microsoft Edge 浏览器，请安装 Edge 浏览器后再运行。")
-                else:
-                    self.log("error", "ENGINE", f"浏览器引擎启动失败: {err_msg}")
+                self.log("error", "ENGINE", f"浏览器引擎启动失败: {e}")
                 raise e
 
             p_detail = ctx.pages[0] if ctx.pages else await ctx.new_page()
@@ -204,59 +224,69 @@ class GuiService:
                     Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
                 """)
 
-            # 通道 1: 抓取书籍详情页 (包含高清封面图、作者、画师、简介、标签等)
+            # 通道 1: 抓取书籍详情页 (包含高清封面图、作者、画师、简介、标签等，内置网络抖动重试)
             async def load_detail_page():
-                try:
-                    await p_detail.goto(detail_url, wait_until="domcontentloaded", timeout=25000)
-                    for _ in range(10):
-                        try:
-                            has_info = await p_detail.evaluate("() => !!document.querySelector('.book-info, .book-detail, meta[property=\\'og:image\\']')")
-                            if has_info:
-                                break
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.4)
+                for attempt in range(2):
+                    try:
+                        await p_detail.goto(detail_url, wait_until="domcontentloaded", timeout=25000)
+                        for _ in range(10):
+                            try:
+                                has_info = await p_detail.evaluate("() => !!document.querySelector('.book-info, .book-detail, meta[property=\\'og:image\\']')")
+                                if has_info:
+                                    break
+                            except Exception:
+                                pass
+                            await asyncio.sleep(0.4)
 
-                    # 在浏览器原生上下文中直接提取封面并转为 Base64，彻底杜绝跨域防盗链与 403 阻断
-                    cover_info = await p_detail.evaluate("""async () => {
-                        const img = document.querySelector('.book-img img, .book-cover img, .cover img') 
-                                 || Array.from(document.querySelectorAll('img')).find(i => i.src && (i.src.includes('s.jpg') || i.src.includes('/image/')));
-                        if (!img || !img.src) return { url: '', base64: '' };
-                        const rawUrl = img.src;
-                        try {
-                            const resp = await fetch(rawUrl);
-                            const blob = await resp.blob();
-                            return new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve({ url: rawUrl, base64: reader.result });
-                                reader.readAsDataURL(blob);
-                            });
-                        } catch(e) {
-                            return { url: rawUrl, base64: '' };
-                        }
-                    }""")
-                    html = await p_detail.content()
-                    return html, cover_info
-                except Exception as e:
-                    self.log("warn", "PARSER", f"详情页通道加载异常: {e}")
-                    return "", {"url": "", "base64": ""}
+                        # 在浏览器原生上下文中直接提取封面并转为 Base64，彻底杜绝跨域防盗链与 403 阻断
+                        cover_info = await p_detail.evaluate("""async () => {
+                            const img = document.querySelector('.book-img img, .book-cover img, .cover img') 
+                                     || Array.from(document.querySelectorAll('img')).find(i => i.src && (i.src.includes('s.jpg') || i.src.includes('/image/')));
+                            if (!img || !img.src) return { url: '', base64: '' };
+                            const rawUrl = img.src;
+                            try {
+                                const resp = await fetch(rawUrl);
+                                const blob = await resp.blob();
+                                return new Promise((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => resolve({ url: rawUrl, base64: reader.result });
+                                    reader.readAsDataURL(blob);
+                                });
+                            } catch(e) {
+                                return { url: rawUrl, base64: '' };
+                            }
+                        }""")
+                        html = await p_detail.content()
+                        return html, cover_info
+                    except Exception as e:
+                        if attempt == 0:
+                            self.log("warn", "PARSER", f"详情页通道首次加载超时，正在自动重试: {e}")
+                            await asyncio.sleep(1.0)
+                        else:
+                            self.log("warn", "PARSER", f"详情页通道加载异常: {e}")
+                return "", {"url": "", "base64": ""}
 
-            # 通道 2: 抓取全卷目录页 (包含各分卷与章节链接列表)
+            # 通道 2: 抓取全卷目录页 (包含各分卷与章节链接列表，内置网络抖动重试)
             async def load_catalog_page():
-                try:
-                    await p_catalog.goto(catalog_url, wait_until="domcontentloaded", timeout=25000)
-                    for _ in range(12):
-                        try:
-                            has_vol = await p_catalog.evaluate("() => !!document.querySelector('.volume, #volumes, .chapter-list, .dir-list, .volume-list')")
-                            if has_vol:
-                                break
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.5)
-                    return await p_catalog.content()
-                except Exception as e:
-                    self.log("warn", "PARSER", f"目录页通道加载异常: {e}")
-                    return ""
+                for attempt in range(2):
+                    try:
+                        await p_catalog.goto(catalog_url, wait_until="domcontentloaded", timeout=25000)
+                        for _ in range(12):
+                            try:
+                                has_vol = await p_catalog.evaluate("() => !!document.querySelector('.volume, #volumes, .chapter-list, .dir-list, .volume-list')")
+                                if has_vol:
+                                    break
+                            except Exception:
+                                pass
+                            await asyncio.sleep(0.5)
+                        return await p_catalog.content()
+                    except Exception as e:
+                        if attempt == 0:
+                            self.log("warn", "PARSER", f"目录页通道首次加载超时，正在自动重试: {e}")
+                            await asyncio.sleep(1.0)
+                        else:
+                            self.log("warn", "PARSER", f"目录页通道加载异常: {e}")
+                return ""
 
             (detail_html, cover_info), catalog_html = await asyncio.gather(load_detail_page(), load_catalog_page())
 
@@ -471,6 +501,7 @@ class GuiService:
                 if vid and masked:
                     vol_page_url = f"{BASE_DOMAIN}/novel/{novel_id}/vol_{vid}.html"
                     self.log("info", "PARSER", f"分卷 [{vol['title']}] 包含 {len(masked)} 个被反爬遮蔽章节，正在从分卷页自动同步真实链接...")
+                    vol_page = None
                     try:
                         vol_page = await ctx.new_page()
                         await vol_page.goto(vol_page_url, wait_until="domcontentloaded", timeout=20000)
@@ -484,7 +515,6 @@ class GuiService:
                             await asyncio.sleep(0.5)
 
                         vol_soup = BeautifulSoup(await vol_page.content(), "html.parser")
-                        await vol_page.close()
 
                         vol_map = {}
                         for a in vol_soup.select(".book-new-chapter .tit a, .book-new-chapter a, .chapter-list a"):
@@ -502,6 +532,12 @@ class GuiService:
                         self.log("success", "PARSER", f"分卷 [{vol['title']}] 成功通过分卷页同步修复 {fixed}/{len(masked)} 个章节链接！")
                     except Exception as e:
                         self.log("warn", "PARSER", f"分卷页同步跳过: {e}")
+                    finally:
+                        if vol_page:
+                            try:
+                                await vol_page.close()
+                            except Exception:
+                                pass
 
             await ctx.close()
 
@@ -577,6 +613,8 @@ class GuiService:
         """后台下载工作线程循环：调用真实 scrape_volume_async 爬取分卷正文、插图并生成 EPUB"""
         try:
             download_dir = settings.get("downloadDir", DEFAULT_NOVELS_DIR)
+            if download_dir:
+                self.allowed_download_roots.add(os.path.realpath(download_dir))
             concurrency = int(settings.get("concurrencyTabs", 3))
             headless = bool(settings.get("headless", True))
             cleanup_temp = bool(settings.get("cleanupTemp", True))
@@ -660,13 +698,17 @@ class GuiService:
                     except Exception as err:
                         self.log("warn", "CLEANUP", f"清理临时缓存异常: {err}")
 
+                final_epub_path = epub_file or os.path.join(vol_output_dir, f"{safe_novel}_{safe_vol}.epub")
+                if final_epub_path and os.path.isfile(final_epub_path):
+                    self.generated_epubs.add(os.path.realpath(final_epub_path))
+
                 self.emit("task_completed", {
                     "taskId": task_id,
-                    "epubPath": epub_file or os.path.join(vol_output_dir, f"{safe_novel}_{safe_vol}.epub"),
+                    "epubPath": final_epub_path,
                     "volumeDir": vol_output_dir
                 })
 
-                if settings.get("autoOpenFolder", False):
+                if settings.get("autoOpenFolder", False) and not is_headless_linux():
                     self.open_folder(vol_output_dir)
 
             self.log("success", "QUEUE", "下载队列中的所有任务均已全部处理完毕！")
@@ -730,6 +772,10 @@ class GuiService:
             self.log("warn", "SYSTEM", f"路径不存在: {folder_path}")
             return False
 
+        if is_headless_linux():
+            self.log("info", "SYSTEM", f"当前为无头 Linux 服务器环境，产物已保存至: {os.path.abspath(folder_path)}")
+            return False
+
         try:
             if sys.platform == "win32":
                 os.startfile(os.path.abspath(folder_path))
@@ -749,6 +795,10 @@ class GuiService:
             self.log("warn", "SYSTEM", f"EPUB 文件不存在: {epub_path}")
             return False
 
+        if is_headless_linux():
+            self.log("info", "SYSTEM", f"当前为无头 Linux 服务器环境，请通过浏览器下载按钮获取: {os.path.basename(epub_path)}")
+            return False
+
         try:
             if sys.platform == "win32":
                 os.startfile(os.path.abspath(epub_path))
@@ -764,6 +814,9 @@ class GuiService:
 
     def choose_folder(self):
         """弹出系统级文件夹选择对话框"""
+        if is_headless_linux():
+            self.log("info", "SYSTEM", "无头 Linux 服务器环境不支持本地弹窗选择目录，请直接在输入框中填写服务器路径")
+            return DEFAULT_NOVELS_DIR
         try:
             import tkinter as tk
             from tkinter import filedialog

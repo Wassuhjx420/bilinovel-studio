@@ -13,13 +13,17 @@
 
 ```
 哔哩轻小说爬取/
-├── launch_gui.py                      # 桌面客户端主启动器 (PyWebView / 本地 REST 桥接)
+├── launch_gui.py                      # 桌面客户端与 Linux Web 服务主启动器 (PyWebView / 本地 REST 桥接 / EPUB 下载)
 ├── gui_service.py                     # GUI 服务端调度引擎与事件总线
-├── runtime_env.py                     # 运行时环境感知 (只读静态资源与物理持久化存储隔离)
+├── runtime_env.py                     # 运行时环境感知 (资源隔离、Linux 无头检测、BILINOVEL_DATA_DIR 挂载)
+├── browser_launcher.py                # 跨平台浏览器智能探测与回退启动器 (Windows Edge / Linux Chromium)
 ├── scrape_linovelib.py                # 核心爬虫与异步并发抓取流水线主入口
 ├── to_epub.py                         # EPUB 转换与打包引擎（集成 Calibre/Kavita 系列元数据）
 ├── text_converter.py                  # 轻小说繁简转换引擎（基于 OpenCC t2s 与台版异体字规范化）
 ├── rubbish_secret_map.py              # 站点字体反混淆字典
+├── start_server.sh                    # Linux 服务器 Web 模式启动脚本
+├── Dockerfile                         # Linux 服务器容器构建配置
+├── docker-compose.yml                 # Docker Compose 编排配置
 ├── gui/                               # Vue 3 现代化毛玻璃前端交互界面
 │   ├── index.html
 │   ├── app.js
@@ -49,8 +53,8 @@
 - `beautifulsoup4` (HTML 目录与结构解析)
 - `ebooklib` (EPUB 电子书封装)
 - `opencc-python-reimplemented` (繁简转换引擎，默认开启繁转简；PyInstaller 打包时内嵌其 `config/` 与 `dictionary/` 目录)
-- `pywebview` (可选，原生磨砂毛玻璃桌面窗口模式)
-- 本地系统 Edge 浏览器 (`channel="msedge"`) — 无需额外下载 Chromium
+- `pywebview` (Windows / macOS 桌面窗口模式，通过 `requirements.txt` 平台标记在 Linux 自动跳过)
+- 浏览器内核：Windows 默认优先系统 Microsoft Edge (`channel="msedge"`)，Linux 自动回退 Playwright 内置 Chromium (`playwright install --with-deps chromium`) 或系统预装 Chromium/Chrome/Edge，支持 `BILINOVEL_BROWSER_PATH` / `BILINOVEL_BROWSER_CHANNEL` 覆盖
 
 安装依赖：
 ```bash
@@ -60,9 +64,10 @@ pip install -r requirements.txt
 ## Commands & Usage
 
 ```bash
-# 1. 启动现代化桌面客户端 (推荐)
+# 1. 启动现代化桌面客户端 / Linux Web 服务
 python launch_gui.py
-# 或 Windows 直接双击 start_gui.bat
+# Linux 服务器 Web 模式（或直接运行 bash start_server.sh / docker compose up -d）
+python3 launch_gui.py --web --no-browser --host 0.0.0.0 --port 8765
 
 # 2. 一键编译并打包 Windows 绿色便携 EXE 压缩包
 build_release.bat
@@ -143,6 +148,11 @@ python to_epub.py novels/败北女角太多了！/第9卷 "败北女角太多了
 - **默认开启，全链路可配置**：GUI 偏好设置与解析工作台均提供同步开关（`settings.convertToSimplified`，默认开启），`scrape_volume_async` 与 `generate_epub` 均支持 `convert_to_simplified=True` 参数，CLI 支持通过 `--no-simplified` / `--keep-traditional` 关闭以保留原文。
 - **高保真无损转换策略**：基于 OpenCC `t2s` 字符与短语映射（拒绝使用会改写「文字→文本」「视窗→窗口」「设定→设置」的 `tw2sp` 地区词汇替换），并补充台湾正体轻小说常见异体字规范化（`妳→你`、`牠→它`、`拚→拼`、`揹→背`、`摀→捂`、`瞇→眯`、`暱→昵`、`搧→扇`、`伕→夫`、`搆→够`、`砲→炮`、`珮→佩`、`簷→檐`、`痺→痹`、`睪→睾`、`傚→效`），保护日文姓氏汉字「篠」与动词「覆上/覆住」，上下文精准区分「著/着」（保留「著名/显著/著作/原著」等 `zhù` 义词，同时转换「看著书桌/看著名牌/讨论著」中的助词「著→着」），对简体原文完全幂等。
 - **结构与路径安全**：`to_epub.py` 转换时严格跳过 `[插图: ...]` 与 `[场景分隔...]` 标记，避免破坏本地插图文件名引用；模块同时提供 `convert_epub_file` 对已有 EPUB 仅转换 XML 文本节点与 OPF 系列元数据。
+
+### 4. `browser_launcher.py` & `runtime_env.py` — 跨平台与 Linux 服务器部署层
+
+- **浏览器自动探测与容器安全参数**：按平台优先级自动尝试可用浏览器（Windows: `msedge` -> `chrome` -> Playwright Chromium；Linux: Playwright Chromium -> 系统 `chromium`/`google-chrome`/`microsoft-edge`）；Linux 环境自动追加 `--disable-setuid-sandbox`、`--disable-dev-shm-usage`、`--disable-gpu`、`--disable-quic`，无 `DISPLAY`/`WAYLAND_DISPLAY` 时自动强制 `headless=True`，支持 `BILINOVEL_PROXY` 环境变量配置代理。
+- **服务器 Web 服务化**：`launch_gui.py` 在无头 Linux 环境自动跳过 PyWebView 与 `webbrowser.open`，默认监听 `0.0.0.0:8765`（支持 `allow_reuse_address`、`SIGTERM` 优雅退出、`/api/health` 探活及带路径穿越防护的 `/api/epub/download` 远程取回接口）；支持 `BILINOVEL_DATA_DIR` / `BILINOVEL_NOVELS_DIR` 环境变量挂载持久化目录。
 
 ## Anti-Patterns & Best Practices
 

@@ -208,6 +208,8 @@ const app = createApp({
             speed: '0 KB/s',
             eta: '--:--',
             elapsed: '00:00',
+            epubPath: '',
+            volumeDir: '',
           });
 
         }
@@ -255,6 +257,21 @@ const app = createApp({
     const clearCompleted = () => {
       queue.items = queue.items.filter(i => i.status !== 'completed');
       showToast('已清空所有已完成任务', 'info');
+    };
+
+    const downloadTaskEpub = (task) => {
+      if (!task || !task.epubPath) {
+        showToast('未找到可下载的 EPUB 文件路径', 'warn');
+        return;
+      }
+      const url = `/api/epub/download?path=${encodeURIComponent(task.epubPath)}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${task.novelTitle}_${task.volumeTitle}.epub`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast(`开始下载: 《${task.novelTitle}》 ${task.volumeTitle}`, 'success');
     };
 
     const filteredQueueItems = computed(() => {
@@ -368,6 +385,9 @@ const app = createApp({
           backendDefaultDir = res.downloadDir;
           if (!settings.downloadDir) {
             settings.downloadDir = res.downloadDir;
+            if (res.isHeadlessServer) {
+              settings.autoOpenFolder = false;
+            }
             localStorage.setItem('bilinovel_settings', JSON.stringify(settings));
           }
         }
@@ -468,6 +488,8 @@ const app = createApp({
         if (task) {
           task.status = 'completed';
           task.progress = 100;
+          task.epubPath = data.epubPath || '';
+          task.volumeDir = data.volumeDir || '';
         }
       }
     };
@@ -532,6 +554,7 @@ const app = createApp({
       moveTaskUp,
       moveTaskDown,
       clearCompleted,
+      downloadTaskEpub,
       filteredQueueItems,
       activeDownloadingTask,
       // Settings

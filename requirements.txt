@@ -8,5 +8,5 @@ ebooklib>=0.18
 # 繁简转换引擎 (默认开启繁转简功能)
 opencc-python-reimplemented>=0.1.7
 
-# 原生桌面客户端支持 (可选，未安装时自动回退至浏览器界面)
-pywebview>=4.0.0
+# 原生桌面客户端支持 (Windows / macOS 桌面模式；Linux 服务器默认使用 Web 服务模式)
+pywebview>=4.0.0; sys_platform == "win32" or sys_platform == "darwin"

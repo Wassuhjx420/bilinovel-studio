@@ -480,6 +480,8 @@
                 </div>
 
                 <div class="flex items-center gap-2">
+                  <button v-if="task.status === 'completed' && task.epubPath" @click="downloadTaskEpub(task)"
+                          class="px-2.5 py-1 rounded-lg bg-[#30d158]/15 hover:bg-[#30d158] text-[#30d158] hover:text-white text-xs font-medium transition apple-pressable">下载 EPUB</button>
                   <button v-if="task.status === 'error' || task.status === 'paused'" @click="retryTask(task)"
                           class="px-2.5 py-1 rounded-lg bg-[#0a84ff]/15 hover:bg-[#0a84ff] text-[#0a84ff] hover:text-white text-xs font-medium transition apple-pressable">重试</button>
                   <button @click="removeTask(task.id)"

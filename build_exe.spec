@@ -37,6 +37,7 @@ hiddenimports = [
     'ebooklib.epub',
     'opencc',
     'text_converter',
+    'browser_launcher',
     'rubbish_secret_map',
     'runtime_env',
     'gui_service',
